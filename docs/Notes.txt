@@ -1,4 +1,11 @@
+پرسش من:
 
+```
+ک پیشنهاد برای اصلاح این برنامه داریم. می خواهیم مدل را بر اساس نوع آمینواسید شرطی کنیم. یک چیزی مشابه Conditional GAN نویسنده اصلی کامنت زیر را برای این کار داده است: ``` I think such a conditional extension would very much be possible––in fact, the current implementation of the ManifoldFreeFormFlow class (see: https://github.com/vislearn/FFF/blob/main/fff/m_fff.py#L14) supports conditional arguments to be passed to the encode and decode methods. The conditions are passed to the respective encode and decode methods of the models defined in the configuration file, e.g., a ResNet model (see: https://github.com/vislearn/FFF/blob/main/fff/model/res_net.py#L40), which then define how to handle the condition as an input. In case of the ResNet model, the conditions are simply concatenated to the features. You’d simply have to implement a custom dataset class that returns features and conditions for each element in the batch, such that the apply_conditions method (see: https://github.com/vislearn/FFF/blob/02db8ec7e1a8cf87bd311893e1a24f4b0eb646d8/fff/base.py#L586) can read them correctly. ``` آیا می توانی این پیشنهاد را اعمال کنی؟ ترجیح من روی فایل زیر است: notebooks/M-FFF/CircularSpline_Protein-MAT.ipynb
+```
+
+بخشی از پاسخ شما در میانه مکالمه قبلی:
+````
 نکات را دقیق تفکیک می‌کنم و نحوه رسیدن به دو حالت مدنظر شما را روشن می‌کنم.
 
 وضعیت فعلی کد
@@ -22,7 +29,10 @@
 با این تغییر، دو حالت مدنظر شما دقیقاً تأمین می‌شود:
 - حالت پیش‌فرض (همه داده‌ها): get_torus_protein_dataset(subtype=None, condition_on=None) که با پیش‌فرض‌ها حتی نیاز به آرگومان ندارد اگر default را به None تغییر دهیم.
 - حالت شرطی بر اساس کلاس آمینواسید: get_torus_protein_dataset(subtype=None, condition_on="residue")
+````
 
+پاسخ بعدی شما به سؤالات من:
+`````
 پاسخ به ابهامات شما
 - «بدون شرط: یک مدل برای یک subset با پارامتر subtype»:
   - در نسخه قبلی (غیرشرطی) وجود subtype برای این بود که بتوانید یک مدل مستقل فقط روی یک زیرمجموعه مانند General یا Proline بسازید. اما اگر هدف شما «همه داده‌ها» به‌صورت پیش‌فرض است، باید مقدار پیش‌فرض subtype را None کنیم تا فیلتر اعمال نشود.
@@ -45,7 +55,10 @@
 - اگر شرطی‌سازی فعال نباشد و subtype=None باشد، کل داده‌ها استفاده می‌شود.
 - اگر شرطی‌سازی فعال باشد (مثلا condition_on="residue")، همواره از کل داده‌ها استفاده می‌شود و وکتور شرط ساخته می‌شود.
 این ویرایش را در فایل fff/data/torus.py اعمال می‌کنم.
+`````
 
+پاسخ بعدی شما:
+``````
 انجام شد. تغییرات و رفتار نهایی:
 
 آنچه ویرایش شد
@@ -84,9 +97,11 @@
 - پیش‌فرض دقیقاً همه داده‌ها را در بر می‌گیرد.
 - حالت شرطی روی کلاس آمینواسید با یک آرگومان فعال می‌شود.
 - در صورت تمایل همچنان می‌توانید زیرمجموعه‌های غیرشرطی را با subtype فیلتر کنید.
+``````
 
+اصلاح فایل توسط شما:
 
-
+""
 
 برای پیاده‌سازی شرطی‌سازی در نوت‌بوک و نمایش بخشی از برچسب‌ها و بررسی صحت کلاس‌ها، کد بارگذاری داده، DataLoaderها، ساخت مدل و حلقه آموزش را ویرایش می‌کنم تا:
 - دیتاست با condition_on="residue" بارگذاری شود.
@@ -130,7 +145,11 @@
 - سپس آموزش مدل p(x | residue) با شرط وان‌هات اجرا می‌شود.
 
 این تغییرات، روش پیشنهادی محاسبه توابع توزیع شرطی شده بر اساس نوع آمینواسید را در همان نوت‌بوک اعمال می‌کند و همزمان بخشی از داده‌های آموزشی (برچسب‌ها و نمونه‌زاویه‌ها) را نمایش می‌دهد تا صحت کلاس‌ها دیده شود.
+""
 
+پاسخ به پرسش من در رابطه با حلقه اصلی آموزش و اینکه نسخه قبلی شرطی بود یا نه
+
+"""
 
 خیر. در نسخه اولیه «ظاهرِ» شرطی وجود داشت، اما عملاً شرطی نبود.
 
@@ -147,3 +166,4 @@
 جمع‌بندی:
 - نسخه اولیه صرفاً برای برآورده‌کردن امضای تابع مدل یک c ساختگی صفر پاس می‌داد؛ از نظر آماری شرطی‌سازی مؤثری انجام نمی‌شد.
 - نسخه جدید شرط واقعی دارد (label one-hot) و توزیع‌ها به‌صورت p(x | residue) یاد گرفته می‌شوند.
+"""
