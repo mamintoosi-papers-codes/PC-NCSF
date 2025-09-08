@@ -1,0 +1,32 @@
+name: fff
+channels:
+  - conda-forge
+  - pytorch
+  - nvidia
+dependencies:
+  - python=3.10
+  - numpy
+  - scipy
+  - matplotlib
+  - scikit-learn
+  - tqdm
+  - pandas
+  - h5py
+  - pytest
+  - ninja
+  - cython
+  - pytorch
+  - torchvision
+  - torchmetrics
+  - cudatoolkit=11.3  
+  - pip
+  - pip:
+    - ml-collections
+    - sbi
+    - sbibm
+    - geomstats
+    - pyevtk
+    - git+https://github.com/LarsKue/lightning-trainable.git
+    - git+https://github.com/vislearn/FrEIA.git
+    - git+https://github.com/nicola-decao/s-vae-pytorch.git
+    - libigl
