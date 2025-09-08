@@ -27,10 +27,27 @@ parser.add_argument("--hidden-dim", type=int, default=128)
 parser.add_argument("--hidden-layers", type=int, default=3)
 parser.add_argument("--cond-index", type=int, default=0)
 parser.add_argument("--plot-indices", type=str, default="")
+parser.add_argument("--plot-all", action="store_true")
 parser.add_argument("--save-dir", type=str, default="runs")
 parser.add_argument("--patience", type=int, default=10)
 parser.add_argument("--seed", type=int, default=0)
+parser.add_argument("--inspect", action="store_true")
+parser.add_argument("--quiet", action="store_true")
 args = parser.parse_args()
+
+# Utility to optionally suppress stdout (e.g., to silence dataset prints)
+import sys, io, contextlib
+@contextlib.contextmanager
+def suppress_stdout(enabled: bool = True):
+    if not enabled:
+        yield
+        return
+    old_stdout = sys.stdout
+    try:
+        sys.stdout = io.StringIO()
+        yield
+    finally:
+        sys.stdout = old_stdout
 
 set_seed(args.seed)
 
@@ -41,18 +58,20 @@ os.makedirs(save_dir, exist_ok=True)
 # Load protein data
 from fff.data import load_dataset
 from fff.evaluate.tori import convert_to_angles
-protein_dataset = load_dataset("torus_protein", root="./fff/data", condition_on="residue")
+with suppress_stdout(args.quiet):
+    protein_dataset = load_dataset("torus_protein", root="./fff/data", condition_on="residue")
 trainset, valset, testset = [convert_to_angles(ds[:][0].to(device)) for ds in protein_dataset]
 traincond, valcond, testcond = [ds[:][1].to(device) for ds in protein_dataset]
 
-# Inspect conditioning: number of classes and some samples
-labels = traincond.argmax(dim=1).cpu()
-binc = torch.bincount(labels, minlength=traincond.shape[1])
-nonzero = torch.nonzero(binc).squeeze(1).tolist()
-print("cond_dim:", int(traincond.shape[1]))
-print("non-empty class indices and counts:", {int(i): int(binc[i]) for i in nonzero[:10]})
-print("first 5 labels:", [int(x) for x in labels[:5]])
-print("first 3 x (angles):\n", trainset[:3].cpu())
+# Inspect conditioning: number of classes and some samples (optional)
+if args.inspect and not args.quiet:
+    labels = traincond.argmax(dim=1).cpu()
+    binc = torch.bincount(labels, minlength=traincond.shape[1])
+    nonzero = torch.nonzero(binc).squeeze(1).tolist()
+    print("cond_dim:", int(traincond.shape[1]))
+    print("non-empty class indices and counts:", {int(i): int(binc[i]) for i in nonzero[:10]})
+    print("first 5 labels:", [int(x) for x in labels[:5]])
+    print("first 3 x (angles):\n", trainset[:3].cpu())
 
 import zuko
 
@@ -75,14 +94,15 @@ testloader = torch.utils.data.DataLoader(TensorDataset(testset, testcond), batch
 
 cond_dim = int(traincond.shape[1])
 flow = zuko.flows.NCSF(2, cond_dim, **config["network"]).to(device)
-print(f"Thy flow hath {sum([p.numel() for p in flow.parameters()])} parameters, sire.")
+if args.inspect and not args.quiet:
+    print(f"Parameters: {sum(p.numel() for p in flow.parameters())}")
 optimizer = torch.optim.Adam(flow.parameters(), lr=config["lr"])
 scheduler = torch.optim.lr_scheduler.OneCycleLR(optimizer, max_lr=config["lr"], epochs=config["epochs"], steps_per_epoch=len(trainloader))
-scaler = torch.cuda.amp.GradScaler(enabled=(device == "cuda"))
+scaler = torch.amp.GradScaler('cuda', enabled=(device == "cuda"))
 
-from tqdm.auto import trange
+from tqdm import trange
 
-pbar = trange(config["epochs"])
+pbar = trange(config["epochs"], disable=args.quiet)
 
 best_val = float("inf")
 epochs_no_improve = 0
@@ -94,7 +114,7 @@ for epoch in pbar:
     train_loss = 0.0
     for x, c in trainloader:
         optimizer.zero_grad(set_to_none=True)
-        with torch.cuda.amp.autocast(enabled=(device == "cuda")):
+        with torch.amp.autocast('cuda', enabled=(device == "cuda")):
             # c is provided by the loader
             loss = -flow(c).log_prob(x)  # -log p(x | c)
             loss = loss.mean()
@@ -109,7 +129,7 @@ for epoch in pbar:
         flow.eval()
         val_loss = 0.0
         for x, c in valloader:
-            with torch.cuda.amp.autocast(enabled=(device == "cuda")):
+            with torch.amp.autocast('cuda', enabled=(device == "cuda")):
                 loss = -flow(c).log_prob(x)  # -log p(x | c)
                 loss = loss.mean()
             val_loss += loss.item()
@@ -137,13 +157,15 @@ with torch.no_grad():
     flow.eval()
     test_loss = 0.0
     for x, c in testloader:
-        with torch.cuda.amp.autocast(enabled=(device == "cuda")):
+        with torch.amp.autocast('cuda', enabled=(device == "cuda")):
             loss = -flow(c).log_prob(x)
             loss = loss.mean()
         test_loss += loss.item()
     test_loss /= len(testloader)
-print(f"Best Validation Loss: {best_val:.3f}")
-print(f"Test Loss (NLL): {test_loss:.3f}")
+if not args.quiet:
+    print(f"Best Validation Loss: {best_val:.3f}")
+    print(f"Test Loss (NLL): {test_loss:.3f}")
+    print(f"Artifacts saved to: {save_dir}")
 
 from typing import Optional
 import matplotlib.pyplot as plt
@@ -164,7 +186,7 @@ def plot_model_log_densities(
         ax = fig.add_subplot(111)
 
     range_angular = torch.linspace(-torch.pi, torch.pi, num_grid_points)
-    phi_grid, psi_grid = torch.meshgrid(range_angular, range_angular)
+    phi_grid, psi_grid = torch.meshgrid(range_angular, range_angular, indexing='ij')
     x = torch.stack((phi_grid, psi_grid), dim=-1).to(device).reshape(-1, 2)
     c = torch.zeros(x.shape[0], cond_dim, device=device, dtype=x.dtype)
     c[:, cond_index] = 1
@@ -226,9 +248,12 @@ with open(os.path.join(save_dir, "metrics.csv"), "w", newline="") as f:
         writer.writerow([i, tr, va])
 
 # Contour plots for specified indices
-indices = [args.cond_index]
-if args.plot_indices:
-    indices = [int(i) for i in args.plot_indices.split(",") if i.strip() != ""]
+if getattr(args, 'plot_all', False):
+    indices = list(range(cond_dim))
+else:
+    indices = [args.cond_index]
+    if args.plot_indices:
+        indices = [int(i) for i in args.plot_indices.split(",") if i.strip() != ""]
 for idx in indices:
     fig = plot_model_log_densities(flow, valset.cpu(), cond_index=idx)
     fig.savefig(os.path.join(save_dir, f"contour_cond_{idx}.png"), dpi=150, bbox_inches="tight")
