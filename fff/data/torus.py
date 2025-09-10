@@ -25,7 +25,7 @@ def get_torus_protein_dataset(
     root: str = "./fff/data",
     condition_on: str | None = None,
 ):
-    print(f"Dataset seed: {seed}")
+    # print(f"Dataset seed: {seed}")
     file_path = os.path.join(root, "raw_data", "torus", "protein.tsv")
 
     raw_data = pd.read_csv(file_path, delimiter="\t", header=None)
@@ -60,6 +60,7 @@ def get_torus_protein_dataset(
                 return res.upper()
 
             classes = sorted(set(_extract_res(n) for n in used["name"].values))
+            
             idx = torch.tensor([classes.index(_extract_res(n)) for n in used["name"].values], dtype=torch.long)
         elif condition_on == "subtype":
             classes = sorted(set(used["subtype"].values))
@@ -67,7 +68,12 @@ def get_torus_protein_dataset(
         else:
             raise ValueError(f"Unknown condition_on={condition_on!r}. Use 'residue' or 'subtype'.")
 
-        cond = F.one_hot(idx, num_classes=len(classes)).to(dtype=data.dtype)
+        # cond = F.one_hot(idx, num_classes=len(classes)).to(dtype=data.dtype)
+        # print(len(classes), len(idx), len(cond))
+        # print(classes[:5], idx[:5], cond[:5])
+
+        # به جای یک داغ همان شماره کلاس را در نظر می‌گیرم
+        cond = idx
 
     # Split data (and conditions, if present) with identical seeds to align splits
     if cond is None:
