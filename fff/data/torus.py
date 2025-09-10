@@ -55,9 +55,12 @@ def get_torus_protein_dataset(
         if condition_on == "residue":
             # Extract three-letter residue code (e.g., GLY, PRO) from the name field
             def _extract_res(name: str) -> str:
-                tail = str(name).split(":")[-1]
-                res = "".join([ch for ch in tail if ch.isalpha()])
-                return res.upper()
+                # tail = str(name).split(":")[-1]
+                # res = "".join([ch for ch in tail if ch.isalpha()])
+                # return res.upper()
+                # name = '119L:ChainA:ASN2'
+                p_name = str(name).split(":")[0] # p_name = '119L'              
+                return p_name.upper()
 
             classes = sorted(set(_extract_res(n) for n in used["name"].values))
             
@@ -70,9 +73,9 @@ def get_torus_protein_dataset(
 
         # cond = F.one_hot(idx, num_classes=len(classes)).to(dtype=data.dtype)
         # print(len(classes), len(idx), len(cond))
-        # print(classes[:5], idx[:5], cond[:5])
+        # print(classes[:5], len(classes), idx[:5])
 
-        # به جای یک داغ همان شماره کلاس را در نظر می‌گیرم
+        # به جای یک فعال همان شماره کلاس را در نظر می‌گیرم
         cond = idx
 
     # Split data (and conditions, if present) with identical seeds to align splits

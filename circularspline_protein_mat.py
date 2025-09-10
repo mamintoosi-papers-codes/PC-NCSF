@@ -20,12 +20,12 @@ import time
 import csv
 parser = argparse.ArgumentParser(description="Train conditional flow on protein torsion angles.")
 parser.add_argument("--epochs", type=int, default=20)
-parser.add_argument("--batch-size", type=int, default=512)
+parser.add_argument("--batch-size", type=int, default=128)
 parser.add_argument("--lr", type=float, default=2e-4)
 parser.add_argument("--transforms", type=int, default=8)
 parser.add_argument("--hidden-dim", type=int, default=128)
 parser.add_argument("--hidden-layers", type=int, default=3)
-parser.add_argument("--cond-index", type=int, default=0)
+# parser.add_argument("--cond-index", type=int, default=0)
 parser.add_argument("--plot-indices", type=str, default="")
 parser.add_argument("--plot-all", action="store_true")
 parser.add_argument("--save-dir", type=str, default="runs")
@@ -65,12 +65,8 @@ traincond, valcond, testcond = [ds[:][1].to(device) for ds in protein_dataset]
 
 # Inspect conditioning: number of classes and some samples (optional)
 if args.inspect and not args.quiet:
-    labels = traincond.argmax(dim=1).cpu()
-    binc = torch.bincount(labels, minlength=traincond.shape[1])
-    nonzero = torch.nonzero(binc).squeeze(1).tolist()
-    print("cond_dim:", int(traincond.shape[1]))
-    print("non-empty class indices and counts:", {int(i): int(binc[i]) for i in nonzero[:10]})
-    print("first 5 labels:", [int(x) for x in labels[:5]])
+    labels = traincond.cpu()
+    print(len(labels.unique()),len(labels))
     print("first 3 x (angles):\n", trainset[:3].cpu())
 
 import zuko
@@ -92,7 +88,7 @@ trainloader = torch.utils.data.DataLoader(TensorDataset(trainset, traincond), ba
 valloader = torch.utils.data.DataLoader(TensorDataset(valset, valcond), batch_size=config["batch_size"], shuffle=True)
 testloader = torch.utils.data.DataLoader(TensorDataset(testset, testcond), batch_size=config["batch_size"], shuffle=True)
 
-cond_dim = int(traincond.shape[1])
+cond_dim = 1
 flow = zuko.flows.NCSF(2, cond_dim, **config["network"]).to(device)
 if args.inspect and not args.quiet:
     print(f"Parameters: {sum(p.numel() for p in flow.parameters())}")
@@ -116,6 +112,7 @@ for epoch in pbar:
         optimizer.zero_grad(set_to_none=True)
         with torch.amp.autocast('cuda', enabled=(device == "cuda")):
             # c is provided by the loader
+            c = c.float().unsqueeze(-1)
             loss = -flow(c).log_prob(x)  # -log p(x | c)
             loss = loss.mean()
         train_loss += loss.detach().item()
@@ -130,6 +127,7 @@ for epoch in pbar:
         val_loss = 0.0
         for x, c in valloader:
             with torch.amp.autocast('cuda', enabled=(device == "cuda")):
+                c = c.float().unsqueeze(-1)
                 loss = -flow(c).log_prob(x)  # -log p(x | c)
                 loss = loss.mean()
             val_loss += loss.item()
@@ -158,6 +156,7 @@ with torch.no_grad():
     test_loss = 0.0
     for x, c in testloader:
         with torch.amp.autocast('cuda', enabled=(device == "cuda")):
+            c = c.float().unsqueeze(-1)
             loss = -flow(c).log_prob(x)
             loss = loss.mean()
         test_loss += loss.item()
@@ -174,11 +173,11 @@ import matplotlib.pyplot as plt
 def plot_model_log_densities(
     model,
     reference_data = None,
+    cond_index: int = 0,
     num_grid_points: int = 200,
     levels: int = 10,
-    cond_index: int = 0,
     ax: Optional[plt.Axes] = None,
-    fontsizes: dict = dict(TITLESIZE=24, LABELSIZE=20, TICKSIZE=16),
+    fontsizes: dict = dict(TITLESIZE=18, LABELSIZE=16, TICKSIZE=14),
 ):
 
     if ax is None:
@@ -189,7 +188,7 @@ def plot_model_log_densities(
     phi_grid, psi_grid = torch.meshgrid(range_angular, range_angular, indexing='ij')
     x = torch.stack((phi_grid, psi_grid), dim=-1).to(device).reshape(-1, 2)
     c = torch.zeros(x.shape[0], cond_dim, device=device, dtype=x.dtype)
-    c[:, cond_index] = 1
+    c[:, 0] = cond_index
     log_prob = model(c).log_prob(x).cpu()
 
 
@@ -225,7 +224,7 @@ def plot_model_log_densities(
             label="validation data",
         )
 
-    ax.set_title(f"Log density | cond_index={cond_index}", fontsize=fontsizes.get("TITLESIZE"))
+    ax.set_title(f"Log density | cond_idx={cond_index}", fontsize=fontsizes.get("TITLESIZE"))
     return ax.figure
 
 # Save metrics and plots
@@ -248,12 +247,17 @@ with open(os.path.join(save_dir, "metrics.csv"), "w", newline="") as f:
         writer.writerow([i, tr, va])
 
 # Contour plots for specified indices
-if getattr(args, 'plot_all', False):
-    indices = list(range(cond_dim))
-else:
-    indices = [args.cond_index]
-    if args.plot_indices:
-        indices = [int(i) for i in args.plot_indices.split(",") if i.strip() != ""]
+# if getattr(args, 'plot_all', False):
+#     indices = list(range(cond_dim))
+# else:
+#     indices = [args.cond_index]
+#     if args.plot_indices:
+#         indices = [int(i) for i in args.plot_indices.split(",") if i.strip() != ""]
+
+# indices = [0, 1, 2, 3]
+step = 50
+indices = np.arange(0, len(traincond.cpu().unique()), step).tolist()
+
 for idx in indices:
     fig = plot_model_log_densities(flow, valset.cpu(), cond_index=idx)
     fig.savefig(os.path.join(save_dir, f"contour_cond_{idx}.png"), dpi=150, bbox_inches="tight")
