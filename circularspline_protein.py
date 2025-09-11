@@ -51,7 +51,7 @@ def suppress_stdout(enabled: bool = True):
 
 set_seed(args.seed)
 
-run_name = f"cond_residue_{time.strftime('%Y%m%d-%H%M%S')}"
+run_name = f"uncond_bs{args.batch_size}_ep{args.epochs}_{time.strftime('%Y%m%d-%H%M%S')}"
 save_dir = os.path.join(args.save_dir, run_name)
 os.makedirs(save_dir, exist_ok=True)
 
@@ -170,59 +170,88 @@ import matplotlib.pyplot as plt
 @torch.no_grad()
 def plot_model_log_densities(
     model,
-    reference_data = None,
+    reference_data=None,
     cond_index: int = 0,
     num_grid_points: int = 200,
     levels: int = 10,
     ax: Optional[plt.Axes] = None,
     fontsizes: dict = dict(TITLESIZE=18, LABELSIZE=16, TICKSIZE=14),
 ):
-
+    """
+    Plot log density contours for unconditional model.
+    Uses [-π, π] for φ and [0, 2π] for ψ to avoid discontinuity at ψ=0.
+    
+    Args:
+        model: Trained unconditional flow model
+        reference_data: Optional validation data to scatter plot
+        cond_index: Condition index (for compatibility, not used in unconditional)
+        num_grid_points: Resolution of the grid
+        levels: Number of contour levels
+        ax: Matplotlib axes to plot on
+        fontsizes: Font size settings
+    """
+    
     if ax is None:
         fig = plt.figure(figsize=(6, 5))
         ax = fig.add_subplot(111)
 
-    range_angular = torch.linspace(-torch.pi, torch.pi, num_grid_points)
-    phi_grid, psi_grid = torch.meshgrid(range_angular, range_angular, indexing='ij')
+    # Create grid for visualization: φ in [-π, π], ψ in [0, 2π]
+    range_phi = torch.linspace(-torch.pi, torch.pi, num_grid_points)
+    range_psi = torch.linspace(0, 2 * torch.pi, num_grid_points)
+    phi_grid, psi_grid = torch.meshgrid(range_phi, range_psi, indexing='ij')
     x = torch.stack((phi_grid, psi_grid), dim=-1).to(device).reshape(-1, 2)
+    
+    # For unconditional model, create dummy condition tensor
     c = torch.zeros(x.shape[0], cond_dim, device=device, dtype=x.dtype)
     c[:, 0] = cond_index
+    
+    # Calculate log probabilities
     log_prob = model(c).log_prob(x).cpu()
 
-
+    # Create contour plot
     phi, psi = x[..., 0].cpu(), x[..., 1].cpu()
     contours = ax.tricontourf(phi, psi, log_prob, levels=levels, cmap="viridis")
     cbar = plt.colorbar(contours)
     cbar.set_label("Log density", fontsize=fontsizes.get("LABELSIZE"))
     cbar.ax.tick_params(labelsize=fontsizes.get("TICKSIZE"))
 
+    # Set plot limits: φ in [-π, π], ψ in [0, 2π]
     ax.set_xlim(-torch.pi, torch.pi)
-    ax.set_ylim(-torch.pi, torch.pi)
+    ax.set_ylim(0, 2 * torch.pi)
 
+    # Set ticks for φ axis (horizontal) - [-π, π]
     ax.set_xticks(
-        [-torch.pi, -torch.pi / 2, 0, torch.pi / 2, torch.pi],
+        [-torch.pi, -torch.pi/2, 0, torch.pi/2, torch.pi],
         [r"$-\pi$", r"$-\frac{\pi}{2}$", r"$0$", r"$\frac{\pi}{2}$", r"$\pi$"],
     )
+    
+    # Set ticks for ψ axis (vertical) - [0, 2π]
     ax.set_yticks(
-        [-torch.pi, -torch.pi / 2, 0, torch.pi / 2, torch.pi],
-        [r"$-\pi$", r"$-\frac{\pi}{2}$", r"$0$", r"$\frac{\pi}{2}$", r"$\pi$"],
+        [0, torch.pi/2, torch.pi, 3*torch.pi/2, 2*torch.pi],
+        [r"$0$", r"$\frac{\pi}{2}$", r"$\pi$", r"$\frac{3\pi}{2}$", r"$2\pi$"],
     )
+    
     ax.tick_params(labelsize=fontsizes.get("TICKSIZE"))
 
     ax.set_xlabel(r"$\Phi$", fontsize=fontsizes.get("LABELSIZE"))
     ax.set_ylabel(r"$\Psi$", fontsize=fontsizes.get("LABELSIZE"))
 
+    # Add reference data if provided
     if reference_data is not None:
+        # Convert ψ values to [0, 2π] range while keeping φ in [-π, π]
+        ref_phi = reference_data[..., 0]
+        ref_psi = reference_data[..., 1] % (2 * torch.pi)  # Wrap ψ to [0, 2π]
+        
         ax.scatter(
-            reference_data[..., 0],
-            reference_data[..., 1],
+            ref_phi,
+            ref_psi,
             s=1 / len(reference_data) * 2e3,
             c="black",
-            alpha=0.1,
+            alpha=0.2,
             label="validation data",
         )
 
-    ax.set_title(f"Log density", fontsize=fontsizes.get("TITLESIZE"))
+    ax.set_title("Log density", fontsize=fontsizes.get("TICKSIZE"))
     return ax.figure
 
 # Save metrics and plots
