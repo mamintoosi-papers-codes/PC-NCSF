@@ -342,18 +342,31 @@ with open(os.path.join(save_dir, "metrics.csv"), "w", newline="") as f:
         writer.writerow([i, tr, va])
 
 # Contour plots for specified indices
-step = 50
-indices = np.arange(0, n_cond, step).tolist()
+# step = 50
+# indices = np.arange(0, n_cond, step).tolist()
 
+allset = torch.cat([trainset, valset], dim=0)
+allcond = torch.cat([traincond, valcond], dim=0)
+n_cond = int(allcond.max().item()) + 1
+indices = [100 * i for i in range(5)]
 for idx in indices:
-    # Pass both reference data and reference conditions
     fig = plot_model_log_densities(
-        flow, 
-        embedding, 
-        reference_data=valset.cpu(),      # داده‌های اعتبارسنجی
-        reference_cond=valcond.cpu(),     # برچسب‌های cond مربوطه
-        cond_index=idx
+        flow,
+        embedding_layer=embedding,
+        reference_data=allset.cpu(),
+        reference_cond=allcond.cpu(),
+        cond_index=idx,
     )
+
+# for idx in indices:
+#     # Pass both reference data and reference conditions
+#     fig = plot_model_log_densities(
+#         flow, 
+#         embedding, 
+#         reference_data=valset.cpu(),      # داده‌های اعتبارسنجی
+#         reference_cond=valcond.cpu(),     # برچسب‌های cond مربوطه
+#         cond_index=idx
+#     )
     fig.savefig(os.path.join(save_dir, f"contour_cond_{idx}.png"), dpi=150, bbox_inches="tight")
     plt.close(fig)
 

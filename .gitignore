@@ -65,6 +65,8 @@ checkpoints/
 models/
 artifacts/
 wandb/
+reports/
+reports*/
 
 # Project-specific data directory (keep placeholders)
 # fff/data/
@@ -73,7 +75,6 @@ wandb/
 
 data/
 datasets/
-reports/
 
 # Model weights and artifacts
 *.pt
