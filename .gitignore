@@ -73,6 +73,7 @@ wandb/
 
 data/
 datasets/
+reports/
 
 # Model weights and artifacts
 *.pt

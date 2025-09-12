@@ -58,12 +58,9 @@ flow = zuko.flows.NCSF(
 ## 🔧 Key Implementation Details
 
 ### **Condition Processing Innovation**
-The critical modification from residue-type to protein-specific conditioning:
+The critical modification from un-conditional to protein-specific conditioning.
 
-```python
-# BEFORE: 20 residue types (GLY, PRO, ALA, etc.)
-# AFTER: 496 unique protein identifiers (119L, 1A0R, 2XYZ, etc.)
-```
+ 496 unique protein identifiers (119L, 1A0R, 2XYZ, etc.)
 
 This enables:
 - Protein-specific torsion angle distributions
@@ -89,13 +86,12 @@ log_prob = flow(protein_embedding).log_prob(angles)  # shape: (batch_size)
 
 ### **Original Data Structure**
 - **Source**: Torus protein dataset (TSV format)
-- **Columns**: name, phi, psi, subtype
-- **Residue-based**: 20 standard amino acid types
+- **Columns**: name, phi, psi, subtype  (20 standard amino acid types)
 
 ### **Enhanced Conditioning**
 - **Protein-based**: 496 unique protein identifiers
 - **Sample size**: ~160,000 torsion angle measurements
-- **Split**: 70% train, 15% validation, 15% test
+- **Split**: 80% train, 20% validation
 
 ### **Data Transformation**
 ```python
