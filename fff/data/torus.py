@@ -80,22 +80,22 @@ def get_torus_protein_dataset(
 
     # Split data (and conditions, if present) with identical seeds to align splits
     if cond is None:
-        train_data, val_data, test_data = split_dataset(data, seed=seed)
+        train_data, val_data = split_dataset(data, seed=seed)
         train_ds = TensorDataset(train_data)
         val_ds = TensorDataset(val_data)
-        test_ds = TensorDataset(test_data)
+        # test_ds = TensorDataset(test_data)
     else:
-        train_data, val_data, test_data = split_dataset(data, seed=seed)
-        train_cond, val_cond, test_cond = split_dataset(cond, seed=seed)
+        train_data, val_data = split_dataset(data, seed=seed)
+        train_cond, val_cond = split_dataset(cond, seed=seed)
         train_ds = TensorDataset(train_data, train_cond)
         val_ds = TensorDataset(val_data, val_cond)
-        test_ds = TensorDataset(test_data, test_cond)
+        # test_ds = TensorDataset(test_data, test_cond)
 
     manifold = ProductManifold([Hypersphere(1), Hypersphere(1)])
     return (
         ManifoldDataset(train_ds, manifold),
         ManifoldDataset(val_ds, manifold),
-        ManifoldDataset(test_ds, manifold),
+        # ManifoldDataset(test_ds, manifold),
     )
 
 

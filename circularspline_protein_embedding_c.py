@@ -62,8 +62,8 @@ from fff.data import load_dataset
 from fff.evaluate.tori import convert_to_angles
 with suppress_stdout(args.quiet):
     protein_dataset = load_dataset("torus_protein", root="./fff/data", condition_on="residue")
-trainset, valset, testset = [convert_to_angles(ds[:][0].to(device)) for ds in protein_dataset]
-traincond, valcond, testcond = [ds[:][1].to(device) for ds in protein_dataset]
+trainset, valset = [convert_to_angles(ds[:][0].to(device)) for ds in protein_dataset]
+traincond, valcond = [ds[:][1].to(device) for ds in protein_dataset]
 labels = traincond.cpu()
 n_cond = len(labels.unique())
 
@@ -91,12 +91,11 @@ config = {
 from torch.utils.data import TensorDataset
 trainloader = torch.utils.data.DataLoader(TensorDataset(trainset, traincond), batch_size=config["batch_size"], shuffle=True)
 valloader = torch.utils.data.DataLoader(TensorDataset(valset, valcond), batch_size=config["batch_size"], shuffle=True)
-testloader = torch.utils.data.DataLoader(TensorDataset(testset, testcond), batch_size=config["batch_size"], shuffle=True)
 
 # Create embedding layer
 embedding = nn.Embedding(num_embeddings=n_cond, embedding_dim=config["embedding_dim"]).to(device)
 
-# FIXED: Use the same dimension as embedding output for flow condition dimension
+# Use the same dimension as embedding output for flow condition dimension
 cond_dim = config["embedding_dim"]  # This should match embedding dimension
 flow = zuko.flows.NCSF(2, cond_dim, **config["network"]).to(device)
 
@@ -161,20 +160,15 @@ for epoch in pbar:
         flow.eval()
         embedding.eval()  # Embedding را هم در حالت ارزیابی قرار دهید
         val_loss = 0.0
-        
         for x, c_labels in valloader:
             with torch.amp.autocast('cuda', enabled=(device == "cuda")):
                 # تبدیل labelهای integer به embedding
                 c_labels = c_labels.long().to(device)
                 c = embedding(c_labels)  # shape: (batch_size, cond_dim)
-                
                 loss = -flow(c).log_prob(x)  # -log p(x | c)
                 loss = loss.mean()
-            
             val_loss += loss.item()
-        
         val_loss /= len(valloader)
-
     train_losses.append(train_loss)
     val_losses.append(val_loss)
 
@@ -198,22 +192,6 @@ ckpt = torch.load(os.path.join(save_dir, "best_flow.pt"), map_location=device)
 # بارگذاری state dictهای هر دو مدل
 flow.load_state_dict(ckpt["flow_state_dict"])
 embedding.load_state_dict(ckpt["embedding_state_dict"])
-
-with torch.no_grad():
-    flow.eval()
-    embedding.eval()  # Embedding را هم در حالت ارزیابی قرار دهید
-    
-    test_loss = 0.0
-    for x, c_labels in testloader:  # c_labels اکنون integer هستند
-        with torch.amp.autocast('cuda', enabled=(device == "cuda")):
-            c_labels = c_labels.long().to(device)
-            c = embedding(c_labels)  # shape: (batch_size, cond_dim)            
-            loss = -flow(c).log_prob(x)
-            loss = loss.mean()        
-        test_loss += loss.item()    
-    test_loss /= len(testloader)
-
-# print(f"Test Loss: {test_loss:.4f}")
 
 # برای نمونه‌گیری از مدل آموزش دیده:
 # def generate_samples(class_id, num_samples=1000):
@@ -241,7 +219,6 @@ with torch.no_grad():
 
 if not args.quiet:
     print(f"Best Validation Loss: {best_val:.3f}")
-    print(f"Test Loss (NLL): {test_loss:.3f}")
     print(f"Artifacts saved to: {save_dir}")
 
 from typing import Optional

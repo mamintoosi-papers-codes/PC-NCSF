@@ -25,7 +25,6 @@ parser.add_argument("--lr", type=float, default=2e-4)
 parser.add_argument("--transforms", type=int, default=8)
 parser.add_argument("--hidden-dim", type=int, default=128)
 parser.add_argument("--hidden-layers", type=int, default=3)
-# parser.add_argument("--cond-index", type=int, default=0)
 parser.add_argument("--plot-indices", type=str, default="")
 parser.add_argument("--plot-all", action="store_true")
 parser.add_argument("--save-dir", type=str, default="runs")
@@ -60,7 +59,7 @@ from fff.data import load_dataset
 from fff.evaluate.tori import convert_to_angles
 with suppress_stdout(args.quiet):
     protein_dataset = load_dataset("torus_protein", root="./fff/data") # , condition_on="residue"
-trainset, valset, testset = [convert_to_angles(ds[:][0].to(device)) for ds in protein_dataset]
+trainset, valset = [convert_to_angles(ds[:][0].to(device)) for ds in protein_dataset]
 # Inspect conditioning: number of classes and some samples (optional)
 if args.inspect and not args.quiet:
     print("first 3 x (angles):\n", trainset[:3].cpu())
@@ -79,13 +78,8 @@ config = {
     "seed": args.seed,
 }
 
-# from torch.utils.data import TensorDataset
-# trainloader = torch.utils.data.DataLoader(TensorDataset(trainset, traincond), batch_size=config["batch_size"], shuffle=True)
-# valloader = torch.utils.data.DataLoader(TensorDataset(valset, valcond), batch_size=config["batch_size"], shuffle=True)
-# testloader = torch.utils.data.DataLoader(TensorDataset(testset, testcond), batch_size=config["batch_size"], shuffle=True)
 trainloader = torch.utils.data.DataLoader(trainset, batch_size=config["batch_size"], shuffle=True)
 valloader = torch.utils.data.DataLoader(valset, batch_size=config["batch_size"], shuffle=True)
-testloader = torch.utils.data.DataLoader(testset, batch_size=config["batch_size"], shuffle=True)
 
 cond_dim = 1
 flow = zuko.flows.NCSF(2, cond_dim, **config["network"]).to(device)
@@ -149,19 +143,11 @@ for epoch in pbar:
 # Load best checkpoint and evaluate on test set
 ckpt = torch.load(os.path.join(save_dir, "best_flow.pt"), map_location=device)
 flow.load_state_dict(ckpt["state_dict"])
-with torch.no_grad():
-    flow.eval()
-    test_loss = 0.0
-    for x in testloader:
-        with torch.amp.autocast('cuda', enabled=(device == "cuda")):
-            c = torch.zeros_like(x[:,:1])
-            loss = -flow(c).log_prob(x)
-            loss = loss.mean()
-        test_loss += loss.item()
-    test_loss /= len(testloader)
+
+
 if not args.quiet:
     print(f"Best Validation Loss: {best_val:.3f}")
-    print(f"Test Loss (NLL): {test_loss:.3f}")
+    # print(f"Test Loss (NLL): {test_loss:.3f}")
     print(f"Artifacts saved to: {save_dir}")
 
 from typing import Optional
