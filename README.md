@@ -1,110 +1,136 @@
-# Free-form flows 
+# Protein-Conditional Free-form Flows for Backbone Torsion Angle Modeling
 
-This is the official `PyTorch` implementation for our papers:
+This repository implements **Protein-Conditional Free-form Flows (PC-FFF)** for residue-specific modeling of protein backbone torsion angle distributions on the torus manifold. 
 
-1. [Free-form flows: Make Any Architecture a Normalizing Flow](http://arxiv.org/abs/2310.16624) on full-dimensional normalizing flows:
-    ```bibtex
-    @inproceedings{draxler2024freeform,
-        title = {{Free-form flows: Make Any Architecture a Normalizing Flow}},
-        author = {Draxler, Felix and Sorrenson, Peter and Zimmermann, Lea and Rousselot, Armand and Köthe, Ullrich},
-        booktitle = {International Conference on Artificial Intelligence and Statistics},
-        year = {2024}
-    }
-    ```
-2. [Lifting Architectural Constraints of Injective Flows](http://arxiv.org/abs/2306.01843) on learning a manifold and the distribution on it jointly:
-    ```bibtex
-    @inproceedings{sorrenson2024lifting,
-        title = {{Lifting Architectural Constraints of Injective Flows}},
-        booktitle = {International {{Conference}} on {{Learning Representations}}},
-        author = {Sorrenson, Peter and Draxler, Felix and Rousselot, Armand and Hummerich, Sander and Zimmermann, Lea and Köthe, Ullrich},
-        year = {2024}
-    }
-    ```
-3. [Learning Distributions on Manifolds with Free-form Flows](https://arxiv.org/abs/2312.09852) on learning distributions on a known manifold:
-    ```bibtex
-    @article{sorrenson2023learning,
-        title = {Learning Distributions on Manifolds with Free-form Flows},
-        author = {Sorrenson, Peter and Draxler, Felix and Rousselot, Armand and Hummerich, Sander and Köthe, Ullrich},
-        journal = {arXiv preprint arXiv:2312.09852},
-        year = {2023}
-    }
-    ```
+## 📋 Overview
 
+Protein structure is largely determined by the distribution of backbone torsion angles $(\phi, \psi)$. While traditional Ramachandran plots provide a global view of these distributions, they fail to capture residue-specific preferences. Building on recent advances in normalizing flows on manifolds, particularly Free-form Flows (FFF), we implement **Protein-Conditional Free-form Flows (PC-FFF)** that condition the flow transformation on residue type information, enabling residue-specific modeling of torsion angle distributions.
 
-## Installation
+By embedding residue identifiers into continuous representations, our framework learns distinct conditional densities $p(\phi, \psi \mid \text{residue})$. Experiments on the Torus Protein dataset demonstrate that PC-FFF significantly improves validation likelihoods compared to unconditional baselines, yielding more realistic Ramachandran-like distributions.
 
-To run our experiments, install the dependencies first:
+This work highlights the importance of residue-aware conditioning for generative modeling of protein backbone conformations on the torus manifold.
 
+## 📋 Overview
+
+The implementation includes two main approaches:
+
+1. **FFF (Unconditional)**: Standard free-form flow for torus density estimation
+2. **PC-FFF (Conditional)**: Conditioned free-form flow that incorporates residue type information via embedding layers
+
+## 🏗️ Project Structure
+
+```
+.
+├── fff/                     # Core FFF library components
+├── runs/                    # Training outputs and checkpoints
+├── reports/                 # Generated reports and visualizations
+├── configs/                 # Configuration files
+├── circularspline_protein.py              # Unconditional model training script
+├── circularspline_protein_embedding_c.py  # Conditional model training script
+├── report_generator.py      # Report generation and visualization
+├── compare_batch_size.py    # Batch size comparison utility
+├── compare_embeddings.py    # Embedding dimension comparison utility
+└── README.md
+```
+
+## 🚀 Quick Start
+
+### Installation
+
+1. Clone the repository:
 ```bash
-git clone https://github.com/vislearn/FFF.git
-cd FFF
+git clone <your-repo-url>
+cd <repo-name>
+```
+
+2. Install dependencies:
+```bash
 pip install -r requirements.txt
 ```
 
-If you want to import our loss into your project, install our package using `pip`:
+### Training Models
 
+**Unconditional Model (FFF):**
 ```bash
-pip install .
-```
-In the last line, use `pip install -e .` if you want to edit our code.
-
-Then you can import the package via
-
-```python
-import fff
+python circularspline_protein.py --batch-size 256 --epochs 40
 ```
 
-
-## Basic usage
-
-### Train your own Free-Form Flow 
-
-See [toy-example.ipynb](toy-example.ipynb) for an example how to learn a model for toy data.
-
-### Tutorials
-
-Check out our tutorial on manifold free-form flows [here](https://drive.google.com/file/d/1z5qjozcVUcAr_X7UrrXmbol2ETMu_q86/view?usp=sharing)
-
-### Reproduce our experiments
-
-All training configurations from our papers can be found in the `configs/(fff|fif)` directories.
-
-Our training framework is built on [lightning-trainable](https://github.com/LarsKue/lightning-trainable), a configuration wrapper around [PyTorch Lightning](https://lightning.ai/pytorch-lightning). There is no `main.py`, but you can train all our models via the `lightning_trainable.launcher.fit` module.
-For example, to train the Boltzmann generator on DW4:
+**Conditional Model (PC-FFF):**
 ```bash
-python -m lightning_trainable.launcher.fit configs/fff/dw4.yaml --name '{data_set[name]}'
+python circularspline_protein_embedding_c.py --batch-size 256 --epochs 40 --embedding-dim 16 --plot-all
 ```
 
-This will create a new directory `lightning_logs/dw4/`. You can monitor the run via `tensorboard`:
+### Generating Reports
+
+After training, generate comprehensive reports and visualizations:
 ```bash
-tensorboard --logdir lightning_logs
+python report_generator.py
 ```
 
-When training has finished, you can import the model via
-```python
-import fff
+This will create:
+- Density contour plots for all trained models
+- Loss comparison curves
+- Excel summary with detailed metrics and model configurations
 
-model = fff.FreeFormFlow.load_from_checkpoint(
-    'lightning_logs/dw4/version_0/checkpoints/last.ckpt'
-)
+## 📊 Model Types
+
+### FFF (Free-form Flow)
+- Unconditional density estimation on the torus
+- Learns the distribution of protein backbone dihedral angles
+- Output files prefixed with `uncond_bs*_ep*`
+
+### PC-FFF (Conditioned Free-form Flow)
+- Conditional density estimation using residue type embeddings
+- Incorporates protein sequence information
+- Output files prefixed with `cond_bs*_ep*_ed*`
+
+## 📈 Output Files
+
+The training process generates:
+
+1. **Checkpoints**: Model weights in `runs/` directory
+2. **Metrics**: Training/validation loss curves in CSV format
+3. **Visualizations**: 
+   - Density contour plots (Φ-Ψ space)
+   - Loss comparison curves
+   - Model performance summaries
+
+Report generator creates:
+- `loss_curves_comparison.png`: Comparison of FFF vs PC-FFF performance
+- `loss_curves_summary.xlsx`: Detailed Excel report with:
+  - All model data
+  - Summary statistics
+  - Model configurations
+  - Separate sheets for each model type
+
+## ⚙️ Configuration
+
+Key hyperparameters:
+- `--batch-size`: Training batch size (64, 128, 256, etc.)
+- `--epochs`: Number of training epochs
+- `--embedding-dim`: Embedding dimension for conditional models (4, 8, 16, 32)
+- `--plot-all`: Generate visualizations during training
+
+## 📖 Citation
+
+If you use this code in your research, please cite the original FFF papers:
+
+```bibtex
+@inproceedings{PC-FFF2025,
+    title = {{Protein-Conditional Free-form Flows for Backbone Torsion Angle Modeling}},
+    author = {...},
+    booktitle = {arxive},
+    year = {2025}
+}
 ```
 
-If you want to overwrite the default parameters, you can add `key=value`-pairs after the config file:
-```bash
-python -m lightning_trainable.launcher.fit configs/fff/dw4.yaml batch_size=128 loss_weights.noisy_reconstruction=20 --name '{data_set[name]}'
-```
+## 🤝 Contributing
 
-#### Known issues
+This implementation is based on the official FFF repository:
+https://github.com/vislearn/FFF
 
-Training with $E(n)$-GNNs is sometimes unstable. This is usually caught with an assertion in a later step and training is stopped.
-In almost all cases, training can be stably resumed from the last epoch checkpoint by passing the `--continue-from [CHECKPOINT]` flag to the training, such as:
-```bash
-python -m lightning_trainable.launcher.fit configs/fff/dw4.yaml --name '{data_set[name]}' --continue-from lightning_logs/dw4/version_0/checkpoints/last.ckpt
-```
-This reloads the entire training state (model state, optim state, epoch, etc.) from the checkpoint and continues training from there.
+For issues and contributions related to this specific protein torsion angle implementation, please open an issue in this repository.
 
+## 📄 License
 
-### Setup your own training
-
-Start with the config file in `configs/(fff|fif)` that fits your needs best and modify it.
-For custom data sets, add the data set to `fff.data`.
+This project is licensed under the MIT License - see the LICENSE file for details.

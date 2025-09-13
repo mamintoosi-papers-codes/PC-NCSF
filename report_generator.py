@@ -13,7 +13,6 @@ import seaborn as sns
 device = "cuda" if torch.cuda.is_available() else "cpu"
 os.environ['KMP_DUPLICATE_LIB_OK'] = 'TRUE'
 
-# ----------- تابع رسم عمومی -----------
 @torch.no_grad()
 def plot_model_log_densities(
     model,
@@ -103,7 +102,7 @@ def plot_model_log_densities(
     return ax.figure
 
 
-# ----------- گزارش‌گیری -----------
+# ----------- Reporting -----------
 runs_dir = "runs"
 reports_dir = "reports"
 os.makedirs(reports_dir, exist_ok=True)
@@ -158,11 +157,13 @@ for run_folder in os.listdir(runs_dir):
             embedding_dim = embedding.embedding_dim
     # ------------------ end embedding loader ------------------
 
-    # Define file prefix
+    # Define file prefix (keep original naming for files)
     if embedding is None:
         file_prefix = f"uncond_bs{batch_size}_ep{epochs}"
+        display_name = "FFF"  # For display purposes only
     else:
         file_prefix = f"cond_bs{batch_size}_ep{epochs}_ed{embedding_dim}"
+        display_name = "PC-FFF"  # For display purposes only
 
     # Recreate flow
     flow = zuko.flows.NCSF(2, cond_dim, **config["network"]).to(device)
@@ -174,9 +175,9 @@ for run_folder in os.listdir(runs_dir):
         raise KeyError(f"No flow state_dict found in checkpoint: {ckpt.keys()}")
     flow.eval()
 
-    # ----- رسم چگالی -----
+    # ----- Plot densities -----
     if embedding is None:
-        # فقط یک پلات برای مدل بدون شرط
+        # Only one plot for unconditional model
         fig = plot_model_log_densities(
             flow,
             cond_dim,
@@ -187,7 +188,7 @@ for run_folder in os.listdir(runs_dir):
         fig.savefig(os.path.join(reports_dir, save_name), dpi=150, bbox_inches="tight")
         plt.close(fig)
     else:
-        # برای مدل شرطی چند شرط انتخابی
+        # Multiple plots for conditional model
         n_cond = int(allcond.max().item()) + 1
         indices = [100 * i for i in range(5)]
         for idx in indices:
@@ -206,89 +207,117 @@ for run_folder in os.listdir(runs_dir):
     print(f"✅ Reports generated for {file_prefix}")
 
 
-# ----------- نمودار Loss و CSV میانگین -----------
-metrics_cond = []
-metrics_uncond = []
+# ----------- Loss plots and CSV summary -----------
+all_metrics = []
+run_configs = []
 
 for run_folder in os.listdir(runs_dir):
     run_path = os.path.join(runs_dir, run_folder)
     metrics_path = os.path.join(run_path, "metrics.csv")
-    if not os.path.exists(metrics_path):
+    ckpt_path = os.path.join(run_path, "best_flow.pt")
+    
+    if not os.path.exists(metrics_path) or not os.path.exists(ckpt_path):
         continue
 
+    # Load metrics
     df = pd.read_csv(metrics_path)
     df["run"] = run_folder
+    
+    # Load config to get model parameters
+    ckpt = torch.load(ckpt_path, map_location=device)
+    config = ckpt["config"]
+    
+    # Determine model type for display (keep original folder names)
+    embedding_dim = config.get("embedding_dim", 0)
+    model_type_display = "PC-FFF" if embedding_dim > 0 else "FFF"
+    
+    df["model_type_display"] = model_type_display
+    df["original_run_name"] = run_folder
+    df["batch_size"] = config["batch_size"]
+    df["epochs"] = config["epochs"]
+    df["embedding_dim"] = embedding_dim
+    df["learning_rate"] = config.get("learning_rate", "N/A")
+    df["hidden_features"] = config["network"].get("hidden_features", "N/A")
+    df["num_transforms"] = config["network"].get("num_transforms", "N/A")
+    
+    all_metrics.append(df)
 
-    if run_folder.startswith("cond"):
-        metrics_cond.append(df)
-    elif run_folder.startswith("uncond"):
-        metrics_uncond.append(df)
-
-cond_df = pd.concat(metrics_cond, ignore_index=True) if metrics_cond else None
-uncond_df = pd.concat(metrics_uncond, ignore_index=True) if metrics_uncond else None
-
-plt.figure(figsize=(8, 6))
-
-out_csv = {}
-
-if cond_df is not None:
-    cond_grouped = cond_df.groupby("epoch").agg(
+# Create comprehensive dataframe
+if all_metrics:
+    full_df = pd.concat(all_metrics, ignore_index=True)
+    
+    # Group by model type and epoch for plotting
+    grouped = full_df.groupby(["model_type_display", "epoch"]).agg(
         train_mean=("train_loss", "mean"),
         train_std=("train_loss", "std"),
         val_mean=("val_loss", "mean"),
         val_std=("val_loss", "std"),
+        count=("train_loss", "count")
     ).reset_index()
 
-    sns.lineplot(x="epoch", y="train_mean", data=cond_grouped,
-                 label="Conditional Train", color="blue")
-    plt.fill_between(cond_grouped["epoch"],
-                     cond_grouped["train_mean"] - cond_grouped["train_std"],
-                     cond_grouped["train_mean"] + cond_grouped["train_std"],
-                     color="blue", alpha=0.2)
+    # Plot loss curves
+    plt.figure(figsize=(10, 8))
+    
+    # Use different colors for each model type
+    colors = {"FFF": "blue", "PC-FFF": "orange"}
+    
+    for model_type in grouped["model_type_display"].unique():
+        model_data = grouped[grouped["model_type_display"] == model_type]
+        
+        if len(model_data) > 0:
+            # Plot training loss
+            sns.lineplot(x="epoch", y="train_mean", data=model_data,
+                         label=f"{model_type} Train", color=colors[model_type])
+            plt.fill_between(model_data["epoch"],
+                             model_data["train_mean"] - model_data["train_std"],
+                             model_data["train_mean"] + model_data["train_std"],
+                             color=colors[model_type], alpha=0.2)
+            
+            # Plot validation loss
+            sns.lineplot(x="epoch", y="val_mean", data=model_data,
+                         label=f"{model_type} Val", color=colors[model_type], linestyle="--")
+            plt.fill_between(model_data["epoch"],
+                             model_data["val_mean"] - model_data["val_std"],
+                             model_data["val_mean"] + model_data["val_std"],
+                             color=colors[model_type], alpha=0.1)
 
-    sns.lineplot(x="epoch", y="val_mean", data=cond_grouped,
-                 label="Conditional Val", color="orange")
-    plt.fill_between(cond_grouped["epoch"],
-                     cond_grouped["val_mean"] - cond_grouped["val_std"],
-                     cond_grouped["val_mean"] + cond_grouped["val_std"],
-                     color="orange", alpha=0.2)
+    plt.xlabel("Epoch")
+    plt.ylabel("Loss (NLL)")
+    
+    # Use (Mean ± Std) in title when multiple files are processed
+    num_models = len(full_df["original_run_name"].unique())
+    title_suffix = " (Mean ± Std)" if num_models > 2 else ""
+    plt.title(f"Training and Validation Loss{title_suffix}")
+    
+    plt.legend()
+    plt.tight_layout()
 
-    out_csv["conditional"] = cond_grouped
+    plt.savefig(os.path.join(reports_dir, "loss_curves_comparison.png"), dpi=150)
+    plt.close()
 
-if uncond_df is not None:
-    uncond_grouped = uncond_df.groupby("epoch").agg(
-        train_mean=("train_loss", "mean"),
-        train_std=("train_loss", "std"),
-        val_mean=("val_loss", "mean"),
-        val_std=("val_loss", "std"),
-    ).reset_index()
+    # Save detailed Excel with multiple sheets
+    with pd.ExcelWriter(os.path.join(reports_dir, "loss_curves_summary.xlsx")) as writer:
+        # Sheet 1: All data
+        full_df.to_excel(writer, sheet_name="All_Models_Data", index=False)
+        
+        # Sheet 2: Summary statistics by model type
+        summary_stats = full_df.groupby(["model_type_display", "epoch"]).agg({
+            "train_loss": ["mean", "std", "count"],
+            "val_loss": ["mean", "std", "count"]
+        }).round(4)
+        summary_stats.to_excel(writer, sheet_name="Summary_Statistics")
+        
+        # Sheet 3: Model configurations
+        config_summary = full_df[["original_run_name", "model_type_display", "batch_size", "epochs", 
+                                 "embedding_dim", "learning_rate", "hidden_features", 
+                                 "num_transforms"]].drop_duplicates()
+        config_summary.to_excel(writer, sheet_name="Model_Configurations", index=False)
+        
+        # Additional sheets for each model type
+        for model_type in full_df["model_type_display"].unique():
+            model_data = full_df[full_df["model_type_display"] == model_type]
+            model_data.to_excel(writer, sheet_name=f"{model_type}_Data", index=False)
 
-    sns.lineplot(x="epoch", y="train_mean", data=uncond_grouped,
-                 label="Unconditional Train", color="green")
-    plt.fill_between(uncond_grouped["epoch"],
-                     uncond_grouped["train_mean"] - uncond_grouped["train_std"],
-                     uncond_grouped["train_mean"] + uncond_grouped["train_std"],
-                     color="green", alpha=0.2)
-
-    sns.lineplot(x="epoch", y="val_mean", data=uncond_grouped,
-                 label="Unconditional Val", color="red")
-    plt.fill_between(uncond_grouped["epoch"],
-                     uncond_grouped["val_mean"] - uncond_grouped["val_std"],
-                     uncond_grouped["val_mean"] + uncond_grouped["val_std"],
-                     color="red", alpha=0.2)
-
-    out_csv["unconditional"] = uncond_grouped
-
-plt.xlabel("Epoch")
-plt.ylabel("Loss (NLL)")
-plt.title("Training and Validation Loss (Mean ± Std)")
-plt.legend()
-plt.tight_layout()
-
-plt.savefig(os.path.join(reports_dir, "loss_curves_comparison.png"), dpi=150)
-plt.close()
-
-# ذخیره CSV
-with pd.ExcelWriter(os.path.join(reports_dir, "loss_curves_summary.xlsx")) as writer:
-    for name, df in out_csv.items():
-        df.to_excel(writer, sheet_name=name, index=False)
+    print("✅ Comprehensive Excel report generated with detailed model information")
+else:
+    print("⚠️ No metrics files found to generate loss curves")

@@ -158,7 +158,7 @@ for epoch in pbar:
 
     with torch.no_grad():
         flow.eval()
-        embedding.eval()  # Embedding را هم در حالت ارزیابی قرار دهید
+        embedding.eval()  
         val_loss = 0.0
         for x, c_labels in valloader:
             with torch.amp.autocast('cuda', enabled=(device == "cuda")):
@@ -176,7 +176,6 @@ for epoch in pbar:
     if val_loss < best_val - 1e-6:
         best_val = val_loss
         epochs_no_improve = 0
-        # هر دو state_dict را ذخیره کنید
         torch.save({
             "flow_state_dict": flow.state_dict(),
             "embedding_state_dict": embedding.state_dict(),
@@ -189,33 +188,54 @@ for epoch in pbar:
 # Load best checkpoint and evaluate on test set
 ckpt = torch.load(os.path.join(save_dir, "best_flow.pt"), map_location=device)
 
-# بارگذاری state dictهای هر دو مدل
 flow.load_state_dict(ckpt["flow_state_dict"])
 embedding.load_state_dict(ckpt["embedding_state_dict"])
 
-# برای نمونه‌گیری از مدل آموزش دیده:
-# def generate_samples(class_id, num_samples=1000):
-#     """تولید نمونه از یک کلاس خاص"""
-#     with torch.no_grad():
-#         flow.eval()
-#         embedding.eval()
+def generate_samples(class_id: int, num_samples: int = 1000) -> torch.Tensor:
+    """
+    Generate samples from the trained conditional flow model for a specific class.
+    
+    This function samples from the learned probability distribution p(x|class_id)
+    where the model has been trained to approximate the data distribution for
+    each conditional class.
+    
+    Args:
+        class_id: Integer identifier of the target class (0 to n_classes-1)
+        num_samples: Number of samples to generate from the conditional distribution
         
-#         # ایجاد شرط برای کلاس مورد نظر
-#         class_tensor = torch.tensor([class_id], device=device)
-#         c = embedding(class_tensor)  # (1, cond_dim)
+    Returns:
+        torch.Tensor: Generated samples with shape (num_samples, 2) containing
+                     (φ, ψ) angles in the embedded space representation
+                     
+    Example:
+        >>> # Generate samples for different protein classes
+        >>> samples_class_0 = generate_samples(0, 1000)      # Class 0 samples
+        >>> samples_class_123 = generate_samples(123, 1000)  # Class 123 samples
+    """
+    with torch.no_grad():  # Disable gradient computation for inference
+        # Set model to evaluation mode
+        flow.eval()
+        embedding.eval()
         
-#         # تکرار شرط برای تعداد نمونه‌های مورد نیاز
-#         c_repeated = c.repeat(num_samples, 1)  # (num_samples, cond_dim)
+        # Create condition tensor for the target class
+        # Convert class_id to tensor and move to appropriate device (CPU/GPU)
+        class_tensor = torch.tensor([class_id], device=device, dtype=torch.long)
         
-#         # نمونه‌گیری
-#         samples = flow(c_repeated).sample()
+        # Get embedding vector for the class condition
+        # shape: (1, cond_dim) where cond_dim is the embedding dimension
+        c = embedding(class_tensor)
         
-#     return samples.cpu()
-
-# # مثال استفاده:
-# samples_class_0 = generate_samples(0, 1000)
-# samples_class_123 = generate_samples(123, 1000)
-# samples_class_499 = generate_samples(499, 1000)
+        # Repeat the condition vector for all samples
+        # shape: (num_samples, cond_dim)
+        c_repeated = c.repeat(num_samples, 1)
+        
+        # Sample from the conditional distribution p(x|class_id)
+        # The flow model transforms base distribution samples through
+        # learned invertible transformations conditioned on c_repeated
+        samples = flow(c_repeated).sample()
+        
+    # Return samples on CPU for further processing or visualization
+    return samples.cpu()
 
 if not args.quiet:
     print(f"Best Validation Loss: {best_val:.3f}")
@@ -358,15 +378,6 @@ for idx in indices:
         cond_index=idx,
     )
 
-# for idx in indices:
-#     # Pass both reference data and reference conditions
-#     fig = plot_model_log_densities(
-#         flow, 
-#         embedding, 
-#         reference_data=valset.cpu(),      # داده‌های اعتبارسنجی
-#         reference_cond=valcond.cpu(),     # برچسب‌های cond مربوطه
-#         cond_index=idx
-#     )
     fig.savefig(os.path.join(save_dir, f"contour_cond_{idx}.png"), dpi=150, bbox_inches="tight")
     plt.close(fig)
 
@@ -384,7 +395,7 @@ def plot_embeddings(embedding_layer, save_path):
     
     n_samples, n_features = embeddings.shape
    
-    # فقط اگر بیش از 1 کلاس داریم PCA انجام بده
+    # Apply PCA 
     if n_samples > 1 and n_features > 1:
         try:
             from sklearn.decomposition import PCA
@@ -399,7 +410,6 @@ def plot_embeddings(embedding_layer, save_path):
                 ax.set_xlabel('PC1')
                 ax.set_ylabel('PC2')
             else:
-                # اگر فقط 1 بعد داریم
                 scatter = ax.scatter(embeddings_2d[:, 0], np.zeros_like(embeddings_2d[:, 0]),
                                     c=all_indices.cpu().numpy(), cmap='viridis', alpha=0.7)
                 ax.set_xlabel('PC1')
@@ -416,14 +426,12 @@ def plot_embeddings(embedding_layer, save_path):
     else:
         print(f"Cannot perform PCA: n_samples={n_samples}, n_features={n_features}")
         
-        # رسم embeddingهای 1 بعدی با اطلاعات بیشتر
         fig, ax = plt.subplots(figsize=(14, 6))
         
         # scatter plot
         scatter = ax.scatter(embeddings[:, 0], np.zeros_like(embeddings[:, 0]), 
                           c=all_indices.cpu().numpy(), cmap='viridis', alpha=0.7, s=50)
         
-        # اضافه کردن مقادیر عددی
         for i, (x, y) in enumerate(zip(embeddings[:, 0], np.zeros_like(embeddings[:, 0]))):
             ax.annotate(f'{i}', (x, y), xytext=(0, 10), 
                        textcoords='offset points', ha='center', fontsize=8, alpha=0.7)
