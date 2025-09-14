@@ -263,44 +263,73 @@ if all_metrics:
         count=("train_loss", "count")
     ).reset_index()
 
-    # Plot loss curves
-    plt.figure(figsize=(10, 8))
-    
-    # Use different colors for each model type
+    # Plot loss curves with enhanced visibility for publication
+    plt.figure(figsize=(12, 9))  # Larger figure size for better visibility
+
+    # Global styling settings for publication-quality plots
+    plt.rcParams['font.size'] = 16  # Increase global font size
+    plt.rcParams['axes.linewidth'] = 2  # Thicker axis lines
+    plt.rcParams['lines.linewidth'] = 3  # Thicker data lines
+
+    # Color scheme for different model types
     colors = {"FFF": "red", "PC-FFF": "blue"}
-    
+
+    # Plot each model type with enhanced styling
     for model_type in grouped["model_type_display"].unique():
         model_data = grouped[grouped["model_type_display"] == model_type]
         
         if len(model_data) > 0:
-            # Plot training loss
+            # Plot training loss with thicker lines
             sns.lineplot(x="epoch", y="train_mean", data=model_data,
-                         label=f"{model_type} Train", color=colors[model_type])
-            plt.fill_between(model_data["epoch"],
-                             model_data["train_mean"] - model_data["train_std"],
-                             model_data["train_mean"] + model_data["train_std"],
-                             color=colors[model_type], alpha=0.2)
+                        label=f"{model_type} Train", color=colors[model_type], 
+                        linewidth=3.5)  # Increased line thickness
             
-            # Plot validation loss
-            sns.lineplot(x="epoch", y="val_mean", data=model_data,
-                         label=f"{model_type} Val", color=colors[model_type], linestyle="--")
+            # Add confidence intervals for training loss
             plt.fill_between(model_data["epoch"],
-                             model_data["val_mean"] - model_data["val_std"],
-                             model_data["val_mean"] + model_data["val_std"],
-                             color=colors[model_type], alpha=0.1)
+                            model_data["train_mean"] - model_data["train_std"],
+                            model_data["train_mean"] + model_data["train_std"],
+                            color=colors[model_type], alpha=0.2)
+            
+            # Plot validation loss with thicker dashed lines
+            sns.lineplot(x="epoch", y="val_mean", data=model_data,
+                        label=f"{model_type} Val", color=colors[model_type], 
+                        linestyle="--", linewidth=3.0)  # Increased line thickness
+            
+            # Add confidence intervals for validation loss
+            plt.fill_between(model_data["epoch"],
+                            model_data["val_mean"] - model_data["val_std"],
+                            model_data["val_mean"] + model_data["val_std"],
+                            color=colors[model_type], alpha=0.1)
 
-    plt.xlabel("Epoch")
-    plt.ylabel("Loss (NLL)")
-    
-    # Use (Mean ± Std) in title when multiple files are processed
+    # Enhanced axis labels with larger fonts
+    plt.xlabel("Epoch", fontsize=20, fontweight='bold')
+    plt.ylabel("Loss (NLL)", fontsize=20, fontweight='bold')
+
+    # Dynamic title based on number of models
     num_models = len(full_df["original_run_name"].unique())
     title_suffix = " (Mean ± Std)" if num_models > 2 else ""
-    plt.title(f"Training and Validation Loss{title_suffix}")
-    
-    plt.legend()
+    plt.title(f"Training and Validation Loss{title_suffix}", 
+            fontsize=22, fontweight='bold', pad=20)
+
+    # Enhanced legend styling
+    plt.legend(fontsize=20, frameon=True, framealpha=0.9, edgecolor='black')
+
+    # Increase tick label sizes
+    plt.xticks(fontsize=16)
+    plt.yticks(fontsize=16)
+
+    # Thicker grid lines for better visibility
+    plt.grid(True, alpha=0.3, linewidth=1.5)
+
+    # Adjust layout and save high-quality outputs
     plt.tight_layout()
 
-    plt.savefig(os.path.join(reports_dir, "loss_curves_comparison.png"), dpi=150)
+    # Save high-resolution images for publication
+    plt.savefig(os.path.join(reports_dir, "loss_curves_comparison.png"), dpi=300)
+    plt.savefig(os.path.join(reports_dir, "loss_curves_comparison.pdf"), bbox_inches='tight')
+
+    # Display the plot
+    # plt.show()
     plt.close()
 
     # Save detailed Excel with multiple sheets
