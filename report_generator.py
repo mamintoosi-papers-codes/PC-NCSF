@@ -230,15 +230,17 @@ for run_folder in os.listdir(runs_dir):
     # Determine model type for display (keep original folder names)
     embedding_dim = config.get("embedding_dim", 0)
     model_type_display = "PC-FFF" if embedding_dim > 0 else "FFF"
-    
+    hidden_features = config.get("hidden_features", None)
+    num_transforms = config.get("num_transforms", None)
+
     df["model_type_display"] = model_type_display
     df["original_run_name"] = run_folder
     df["batch_size"] = config["batch_size"]
     df["epochs"] = config["epochs"]
     df["embedding_dim"] = embedding_dim
     df["learning_rate"] = config.get("learning_rate", "N/A")
-    df["hidden_features"] = config["network"].get("hidden_features", "N/A")
-    df["num_transforms"] = config["network"].get("num_transforms", "N/A")
+    df["hidden_features"] = hidden_features
+    df["num_transforms"] = num_transforms
     
     all_metrics.append(df)
 

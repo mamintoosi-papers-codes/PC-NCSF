@@ -2,7 +2,7 @@ import os
 import pandas as pd
 import matplotlib.pyplot as plt
 
-base_dir = os.path.join("runs", "var-batch-size")
+base_dir = os.path.join("runs", "var-batch-size-uncond")
 
 results = []
 
