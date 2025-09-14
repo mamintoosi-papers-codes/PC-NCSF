@@ -101,10 +101,16 @@ def plot_model_log_densities(
 
     return ax.figure
 
+# CLI
+import argparse
+parser = argparse.ArgumentParser(description="Reporting.")
+parser.add_argument("--runs-dir", type=str, default="runs")
+parser.add_argument("--reports-dir", type=str, default="reports")
+args = parser.parse_args()
 
 # ----------- Reporting -----------
-runs_dir = "runs"
-reports_dir = "reports"
+runs_dir = args.runs_dir
+reports_dir = args.reports_dir
 os.makedirs(reports_dir, exist_ok=True)
 
 # Load full dataset (train + val)
