@@ -261,7 +261,7 @@ if all_metrics:
     plt.figure(figsize=(10, 8))
     
     # Use different colors for each model type
-    colors = {"FFF": "blue", "PC-FFF": "orange"}
+    colors = {"FFF": "red", "PC-FFF": "blue"}
     
     for model_type in grouped["model_type_display"].unique():
         model_data = grouped[grouped["model_type_display"] == model_type]

@@ -1,21 +1,19 @@
 # Protein-Conditional Free-form Flows for Backbone Torsion Angle Modeling
 
-This repository implements **Protein-Conditional Free-form Flows (PC-FFF)** for residue-specific modeling of protein backbone torsion angle distributions on the torus manifold. 
+This repository implements **Protein-Conditional Free-Form Flows (PC-FFF)** for **protein-specific** modeling of protein backbone torsion angle distributions on the torus manifold.
 
 ## 📋 Overview
 
-Protein structure is largely determined by the distribution of backbone torsion angles $(\phi, \psi)$. While traditional Ramachandran plots provide a global view of these distributions, they fail to capture residue-specific preferences. Building on recent advances in normalizing flows on manifolds, particularly Free-form Flows (FFF), we implement **Protein-Conditional Free-form Flows (PC-FFF)** that condition the flow transformation on residue type information, enabling residue-specific modeling of torsion angle distributions.
+Protein structure is largely determined by the distribution of backbone torsion angles $(\phi, \psi)$. While traditional Ramachandran plots provide a global view of these distributions, they fail to capture **protein-specific** preferences. Building on recent advances in normalizing flows on manifolds, particularly Free-form Flows (FFF), we implement **Protein-Conditional Free-form Flows (PC-FFF)** that condition the flow transformation on **protein identity**, enabling **protein-specific** modeling of torsion angle distributions.
 
-By embedding residue identifiers into continuous representations, our framework learns distinct conditional densities $p(\phi, \psi \mid \text{residue})$. Experiments on the Torus Protein dataset demonstrate that PC-FFF significantly improves validation likelihoods compared to unconditional baselines, yielding more realistic Ramachandran-like distributions.
+By embedding **protein identifiers** into continuous representations, our framework learns distinct conditional densities $p(\phi, \psi \mid \text{protein})$. Experiments on the Torus Protein dataset demonstrate that PC-FFF significantly improves validation likelihoods compared to unconditional baselines, yielding more realistic protein-specific distributions.
 
-This work highlights the importance of residue-aware conditioning for generative modeling of protein backbone conformations on the torus manifold.
-
-## 📋 Overview
+This work highlights the importance of **protein-aware** conditioning for generative modeling of protein backbone conformations on the torus manifold.
 
 The implementation includes two main approaches:
 
 1. **FFF (Unconditional)**: Standard free-form flow for torus density estimation
-2. **PC-FFF (Conditional)**: Conditioned free-form flow that incorporates residue type information via embedding layers
+2. **PC-FFF (Conditional)**: Conditioned free-form flow that incorporates protein type information via embedding layers
 
 ## 🏗️ Project Structure
 
