@@ -119,7 +119,7 @@ If you use this code in your research, please cite the original FFF papers:
 @inproceedings{PC-FFF2025,
     title = {{Protein-Conditional Free-form Flows for Backbone Torsion Angle Modeling}},
     author = {...},
-    booktitle = {arxive},
+    booktitle = {arXiv},
     year = {2025}
 }
 ```
