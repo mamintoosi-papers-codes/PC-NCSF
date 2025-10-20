@@ -35,6 +35,8 @@ parser.add_argument("--patience", type=int, default=10)
 parser.add_argument("--seed", type=int, default=0)
 parser.add_argument("--inspect", action="store_true")
 parser.add_argument("--quiet", action="store_true")
+parser.add_argument("--dataset", type=str, default="torus_protein",
+                    help="Dataset name to load (e.g., 'torus_protein' or 'scop_easy')")
 args = parser.parse_args()
 
 # Utility to optionally suppress stdout (e.g., to silence dataset prints)
@@ -53,15 +55,24 @@ def suppress_stdout(enabled: bool = True):
 
 set_seed(args.seed)
 
-run_name = f"cond_bs{args.batch_size}_ep{args.epochs}_ed{args.embedding_dim}_{time.strftime('%Y%m%d-%H%M%S')}"
-save_dir = os.path.join(args.save_dir, run_name)
+# Keep run name compact: include only batch-size, epochs, embedding-dim and hidden-dim
+run_name = f"cond_bs{args.batch_size}_ep{args.epochs}_ed{args.embedding_dim}_hd{args.hidden_dim}"
+# Make save directory dataset-aware so results for different datasets go to separate folders
+save_dir = os.path.join(args.save_dir, args.dataset, run_name)
 os.makedirs(save_dir, exist_ok=True)
 
 # Load protein data
 from fff.data import load_dataset
 from fff.evaluate.tori import convert_to_angles
+
+# determine root depending on dataset choice; SCOP data sits under ./SCOP
+dataset_name = args.dataset
+dataset_root = "./fff/data"
+if dataset_name.startswith("scop"):
+    dataset_root = "."
+
 with suppress_stdout(args.quiet):
-    protein_dataset = load_dataset("torus_protein", root="./fff/data", condition_on="residue")
+    protein_dataset = load_dataset(dataset_name, root=dataset_root, condition_on="residue")
 trainset, valset = [convert_to_angles(ds[:][0].to(device)) for ds in protein_dataset]
 traincond, valcond = [ds[:][1].to(device) for ds in protein_dataset]
 labels = traincond.cpu()

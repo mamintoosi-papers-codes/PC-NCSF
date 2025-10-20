@@ -104,13 +104,21 @@ def plot_model_log_densities(
 # CLI
 import argparse
 parser = argparse.ArgumentParser(description="Reporting.")
-parser.add_argument("--runs-dir", type=str, default="runs")
-parser.add_argument("--reports-dir", type=str, default="reports")
+parser.add_argument("--runs-dir", type=str, default="runs",
+                    help="Base runs directory (default 'runs'). If --dataset is provided, looks under runs/<dataset> unless a full path is given.")
+parser.add_argument("--reports-dir", type=str, default="reports",
+                    help="Base reports directory (default 'reports'). If --dataset is provided, writes to reports/<dataset> unless a full path is given.")
+parser.add_argument("--dataset", type=str, default=None,
+                    help="Optional dataset name to scope runs and reports (e.g., 'scop_easy' or 'torus_protein').")
 args = parser.parse_args()
 
 # ----------- Reporting -----------
 runs_dir = args.runs_dir
 reports_dir = args.reports_dir
+if args.dataset is not None:
+    # If runs_dir/reports_dir appear to be base directories (not absolute specific paths), scope them
+    runs_dir = os.path.join(runs_dir, args.dataset)
+    reports_dir = os.path.join(reports_dir, args.dataset)
 os.makedirs(reports_dir, exist_ok=True)
 
 # Load full dataset (train + val)
@@ -163,13 +171,21 @@ for run_folder in os.listdir(runs_dir):
             embedding_dim = embedding.embedding_dim
     # ------------------ end embedding loader ------------------
 
-    # Define file prefix (keep original naming for files)
-    if embedding is None:
-        file_prefix = f"uncond_bs{batch_size}_ep{epochs}"
-        display_name = "FFF"  # For display purposes only
+    # Define file prefix to match simplified training run naming convention
+    # We include only batch-size, epochs, embedding-dim (if conditional) and hidden-dim
+    net_cfg = config.get("network", {})
+    hidden_features = net_cfg.get("hidden_features", None)
+    if isinstance(hidden_features, list) and len(hidden_features) > 0:
+        hidden_dim_ckpt = hidden_features[0]
     else:
-        file_prefix = f"cond_bs{batch_size}_ep{epochs}_ed{embedding_dim}"
-        display_name = "PC-FFF"  # For display purposes only
+        hidden_dim_ckpt = config.get("hidden_dim", 0)
+
+    if embedding is None:
+        file_prefix = f"uncond_bs{batch_size}_ep{epochs}_hd{hidden_dim_ckpt}"
+        display_name = "FFF"
+    else:
+        file_prefix = f"cond_bs{batch_size}_ep{epochs}_ed{embedding_dim}_hd{hidden_dim_ckpt}"
+        display_name = "PC-FFF"
 
     # Recreate flow
     flow = zuko.flows.NCSF(2, cond_dim, **config["network"]).to(device)

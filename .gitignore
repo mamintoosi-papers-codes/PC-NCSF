@@ -67,6 +67,7 @@ artifacts/
 wandb/
 reports/
 reports*/
+SCOP/
 
 # Project-specific data directory (keep placeholders)
 # fff/data/

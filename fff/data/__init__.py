@@ -44,6 +44,14 @@ def load_dataset(name: str, **kwargs) -> TrainValTest:
         elif name == "torus_rna":
             from .torus import get_torus_rna_dataset
             return get_torus_rna_dataset(**kwargs)
+    elif name == "scop" or name.startswith("scop_"):
+        # allow 'scop' (defaults to easy) or 'scop_easy', 'scop_moderate', etc.
+        from .scop import get_scop_dataset
+        if name == "scop":
+            subset = kwargs.pop("subset", "easy")
+        else:
+            subset = name.split("scop_")[-1]
+        return get_scop_dataset(subset=subset, **kwargs)
     elif name == "hyperbolic-wrapped-normal":
         from .hyperbolic import get_hyperbolic_wrapped_normal_dataset
         return get_hyperbolic_wrapped_normal_dataset(**kwargs)
