@@ -6,6 +6,7 @@ from fff.data import load_dataset
 from fff.evaluate.tori import convert_to_angles
 import zuko
 import torch.nn as nn
+from torch import amp
 from fff.train_utils import ensure_run_folder, save_metrics_csv, save_config_and_checkpoint, set_seed
 
 
@@ -13,7 +14,8 @@ def train_uncond(trainset, valset, config, run_path):
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"[train_uncond] device={device}, run_path={run_path}")
     from contextlib import nullcontext
-    autocast_ctx = torch.cuda.amp.autocast if device == "cuda" else nullcontext
+    # autocast_ctx must be callable to return a context manager when used as `with autocast_ctx():`
+    autocast_ctx = (lambda: amp.autocast(device_type="cuda")) if device == "cuda" else nullcontext
     trainloader = torch.utils.data.DataLoader(trainset, batch_size=config["batch_size"], shuffle=True)
     valloader = torch.utils.data.DataLoader(valset, batch_size=config["batch_size"], shuffle=False)
     print(f"[train_uncond] train batches={len(trainloader)}, val batches={len(valloader)}")
@@ -22,7 +24,7 @@ def train_uncond(trainset, valset, config, run_path):
     flow = zuko.flows.NCSF(2, cond_dim, **config["network"]).to(device)
     optimizer = torch.optim.Adam(flow.parameters(), lr=config["lr"])
     scheduler = torch.optim.lr_scheduler.OneCycleLR(optimizer, max_lr=config["lr"], epochs=config["epochs"], steps_per_epoch=max(1, len(trainloader)))
-    scaler = torch.cuda.amp.GradScaler() if device == "cuda" else None
+    scaler = amp.GradScaler() if device == "cuda" else None
 
     best_val = float("inf")
     epochs_no_imp = 0
@@ -72,7 +74,6 @@ def train_uncond(trainset, valset, config, run_path):
             best_val = v_loss
             epochs_no_imp = 0
             save_config_and_checkpoint(run_path, flow.state_dict(), config, cond_dim)
-            print("Saved checkpoint to", os.path.join(run_path, "best_flow.pt"))
         else:
             epochs_no_imp += 1
 
@@ -81,9 +82,8 @@ def train_uncond(trainset, valset, config, run_path):
 
     # final save (ensure checkpoint exists)
     save_metrics_csv(run_path, train_losses, val_losses)
-    print("Saved metrics to", os.path.join(run_path, "metrics.csv"))
     save_config_and_checkpoint(run_path, flow.state_dict(), config, cond_dim)
-    print("Saved final checkpoint to", os.path.join(run_path, "best_flow.pt"))
+    print("Saved metrics and final checkpoint to", run_path)
     return
 
 
@@ -94,6 +94,9 @@ def train_cond(trainset, valset, traincond, valcond, config, run_path):
     trainloader = torch.utils.data.DataLoader(TensorDataset(trainset, traincond), batch_size=config["batch_size"], shuffle=True)
     valloader = torch.utils.data.DataLoader(TensorDataset(valset, valcond), batch_size=config["batch_size"], shuffle=False)
     print(f"[train_cond] train batches={len(trainloader)}, val batches={len(valloader)}, n_cond={int(traincond.max().item())+1}")
+    from contextlib import nullcontext
+    # autocast_ctx must be callable to return a context manager when used as `with autocast_ctx():`
+    autocast_ctx = (lambda: amp.autocast(device_type="cuda")) if device == "cuda" else nullcontext
 
     n_cond = int(traincond.max().item()) + 1
     embedding = nn.Embedding(num_embeddings=n_cond, embedding_dim=config["embedding_dim"]).to(device)
@@ -102,7 +105,7 @@ def train_cond(trainset, valset, traincond, valcond, config, run_path):
 
     optimizer = torch.optim.Adam([{'params': flow.parameters()}, {'params': embedding.parameters()}], lr=config["lr"])
     scheduler = torch.optim.lr_scheduler.OneCycleLR(optimizer, max_lr=config["lr"], epochs=config["epochs"], steps_per_epoch=max(1, len(trainloader)))
-    scaler = torch.cuda.amp.GradScaler() if device == "cuda" else None
+    scaler = amp.GradScaler() if device == "cuda" else None
 
     best_val = float("inf")
     epochs_no_imp = 0
@@ -116,7 +119,7 @@ def train_cond(trainset, valset, traincond, valcond, config, run_path):
             c_labels = c_labels.long().to(device)
             optimizer.zero_grad(set_to_none=True)
             if device == "cuda":
-                with torch.cuda.amp.autocast():
+                with autocast_ctx():
                     c = embedding(c_labels)
                     loss = -flow(c).log_prob(x).mean()
                 scaler.scale(loss).backward()
@@ -152,7 +155,6 @@ def train_cond(trainset, valset, traincond, valcond, config, run_path):
             best_val = v_loss
             epochs_no_imp = 0
             save_config_and_checkpoint(run_path, flow.state_dict(), config, cond_dim, embedding.state_dict())
-            print("Saved checkpoint to", os.path.join(run_path, "best_flow.pt"))
         else:
             epochs_no_imp += 1
 
@@ -160,9 +162,8 @@ def train_cond(trainset, valset, traincond, valcond, config, run_path):
             break
 
     save_metrics_csv(run_path, train_losses, val_losses)
-    print("Saved metrics to", os.path.join(run_path, "metrics.csv"))
     save_config_and_checkpoint(run_path, flow.state_dict(), config, cond_dim, embedding.state_dict())
-    print("Saved final checkpoint to", os.path.join(run_path, "best_flow.pt"))
+    print("Saved metrics and final checkpoint to", run_path)
     return
 
 
