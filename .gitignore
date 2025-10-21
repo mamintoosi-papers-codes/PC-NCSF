@@ -59,7 +59,7 @@ coverage.xml
 *.py,cover
 
 # Data and experiment artifacts
-runs/
+runs*/
 outputs/
 checkpoints/
 models/

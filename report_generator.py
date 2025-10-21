@@ -116,9 +116,24 @@ args = parser.parse_args()
 runs_dir = args.runs_dir
 reports_dir = args.reports_dir
 if args.dataset is not None:
-    # If runs_dir/reports_dir appear to be base directories (not absolute specific paths), scope them
-    runs_dir = os.path.join(runs_dir, args.dataset)
-    reports_dir = os.path.join(reports_dir, args.dataset)
+    # If the user passed a specific run-folder (e.g. runs/scop_easy/exp01), don't append
+    # the dataset again. Detect a specific run-folder by checking for a checkpoint file.
+    is_specific_run = os.path.isdir(runs_dir) and os.path.exists(os.path.join(runs_dir, "best_flow.pt"))
+
+    # Only scope runs_dir by dataset when the provided runs_dir is a base directory
+    # (for example the default 'runs' or another directory that contains a subfolder
+    # named after the dataset).
+    if not is_specific_run:
+        candidate = os.path.join(runs_dir, args.dataset)
+        if os.path.isdir(candidate):
+            runs_dir = candidate
+
+    # For reports_dir: prefer a reports/<dataset> folder when it exists or when the
+    # user left the default 'reports' base. Otherwise keep the provided reports_dir.
+    candidate_reports = os.path.join(reports_dir, args.dataset)
+    if reports_dir == "reports" or os.path.isdir(candidate_reports):
+        reports_dir = candidate_reports
+
 os.makedirs(reports_dir, exist_ok=True)
 
 def _is_run_folder(path: str) -> bool:
@@ -293,6 +308,10 @@ if all_metrics:
         count=("train_loss", "count")
     ).reset_index()
 
+    # Ensure numeric stds (NaN -> 0) so fill_between works when only one sample/epoch exists
+    grouped["train_std"] = grouped["train_std"].fillna(0.0)
+    grouped["val_std"] = grouped["val_std"].fillna(0.0)
+
     # Plot loss curves with enhanced visibility for publication
     plt.figure(figsize=(12, 9))  # Larger figure size for better visibility
 
@@ -306,30 +325,45 @@ if all_metrics:
 
     # Plot each model type with enhanced styling
     for model_type in grouped["model_type_display"].unique():
-        model_data = grouped[grouped["model_type_display"] == model_type]
-        
-        if len(model_data) > 0:
-            # Plot training loss with thicker lines
-            sns.lineplot(x="epoch", y="train_mean", data=model_data,
-                        label=f"{model_type} Train", color=colors[model_type], 
-                        linewidth=3.5)  # Increased line thickness
-            
-            # Add confidence intervals for training loss
-            plt.fill_between(model_data["epoch"],
-                            model_data["train_mean"] - model_data["train_std"],
-                            model_data["train_mean"] + model_data["train_std"],
-                            color=colors[model_type], alpha=0.2)
-            
-            # Plot validation loss with thicker dashed lines
-            sns.lineplot(x="epoch", y="val_mean", data=model_data,
-                        label=f"{model_type} Val", color=colors[model_type], 
-                        linestyle="--", linewidth=3.0)  # Increased line thickness
-            
-            # Add confidence intervals for validation loss
-            plt.fill_between(model_data["epoch"],
-                            model_data["val_mean"] - model_data["val_std"],
-                            model_data["val_mean"] + model_data["val_std"],
-                            color=colors[model_type], alpha=0.1)
+        model_data = grouped[grouped["model_type_display"] == model_type].copy()
+        if model_data.empty:
+            continue
+
+        # Sort by epoch to ensure lines are drawn in order
+        model_data = model_data.sort_values(by="epoch")
+
+        # Convert to numpy arrays for matplotlib functions
+        epochs_arr = model_data["epoch"].to_numpy()
+        train_mean_arr = model_data["train_mean"].to_numpy()
+        train_std_arr = model_data["train_std"].to_numpy()
+        val_mean_arr = model_data["val_mean"].to_numpy()
+        val_std_arr = model_data["val_std"].to_numpy()
+
+        # If there's only a single epoch, use markers so the point is visible
+        marker_train = 'o'
+        marker_val = 's'
+
+        # Plot training loss (line + marker). Using marker ensures single-point runs are visible.
+        sns.lineplot(x=epochs_arr, y=train_mean_arr,
+                     label=f"{model_type} Train", color=colors.get(model_type, 'black'),
+                     linewidth=3.5, marker=marker_train)
+
+        # Add confidence intervals for training loss (guarded with numeric arrays)
+        plt.fill_between(epochs_arr,
+                         train_mean_arr - train_std_arr,
+                         train_mean_arr + train_std_arr,
+                         color=colors.get(model_type, 'black'), alpha=0.2)
+
+        # Plot validation loss (dashed line + marker)
+        sns.lineplot(x=epochs_arr, y=val_mean_arr,
+                     label=f"{model_type} Val", color=colors.get(model_type, 'black'),
+                     linestyle="--", linewidth=3.0, marker=marker_val)
+
+        # Add confidence intervals for validation loss
+        plt.fill_between(epochs_arr,
+                         val_mean_arr - val_std_arr,
+                         val_mean_arr + val_std_arr,
+                         color=colors.get(model_type, 'black'), alpha=0.1)
 
     # Enhanced axis labels with larger fonts
     plt.xlabel("Epoch", fontsize=20, fontweight='bold')

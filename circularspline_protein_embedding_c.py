@@ -37,6 +37,8 @@ parser.add_argument("--inspect", action="store_true")
 parser.add_argument("--quiet", action="store_true")
 parser.add_argument("--dataset", type=str, default="torus_protein",
                     help="Dataset name to load (e.g., 'torus_protein' or 'scop_easy')")
+parser.add_argument("--tag", type=str, default=None,
+                    help="Optional tag to group paired runs (e.g., 'exp01'). If set, tag will be used as run folder name to match paired runs.")
 args = parser.parse_args()
 
 # Utility to optionally suppress stdout (e.g., to silence dataset prints)
@@ -56,7 +58,10 @@ def suppress_stdout(enabled: bool = True):
 set_seed(args.seed)
 
 # Keep run name compact: include only batch-size, epochs, embedding-dim and hidden-dim
-run_name = f"cond_bs{args.batch_size}_ep{args.epochs}_ed{args.embedding_dim}_hd{args.hidden_dim}"
+if args.tag:
+    run_name = f"{args.tag}"
+else:
+    run_name = f"cond_bs{args.batch_size}_ep{args.epochs}_ed{args.embedding_dim}_hd{args.hidden_dim}"
 # Make save directory dataset-aware so results for different datasets go to separate folders
 save_dir = os.path.join(args.save_dir, args.dataset, run_name)
 os.makedirs(save_dir, exist_ok=True)
@@ -98,6 +103,7 @@ config = {
     "seed": args.seed,
     "embedding_dim": args.embedding_dim,
     "dataset": args.dataset,
+    "tag": args.tag,
 }
 
 from torch.utils.data import TensorDataset
@@ -253,208 +259,9 @@ if not args.quiet:
     print(f"Best Validation Loss: {best_val:.3f}")
     print(f"Artifacts saved to: {save_dir}")
 
-from typing import Optional
-import matplotlib.pyplot as plt
+from fff.train_utils import save_config_and_checkpoint, save_metrics_csv, ensure_run_folder
 
-@torch.no_grad()
-def plot_model_log_densities(
-    model,
-    embedding_layer,
-    reference_data=None,
-    reference_cond=None,  # Condition labels for reference data
-    cond_index: int = 0,
-    num_grid_points: int = 200,
-    levels: int = 10,
-    ax: Optional[plt.Axes] = None,
-    fontsizes: dict = dict(TITLESIZE=18, LABELSIZE=16, TICKSIZE=14),
-):
-    """
-    Plot log density contours for a given conditional index.
-    
-    Args:
-        model: The trained flow model
-        embedding_layer: The trained embedding layer for condition processing
-        reference_data: Optional validation data to scatter plot
-        reference_cond: Condition labels for the reference data (must be provided with reference_data)
-        cond_index: Which condition index to visualize
-        num_grid_points: Resolution of the grid
-        levels: Number of contour levels
-        ax: Matplotlib axes to plot on
-        fontsizes: Font size settings
-    """
-    
-    if ax is None:
-        fig = plt.figure(figsize=(6, 5))
-        ax = fig.add_subplot(111)
-
-    # Create grid for visualization: φ in [-π, π], ψ in [0, 2π]
-    range_phi = torch.linspace(-torch.pi, torch.pi, num_grid_points)
-    range_psi = torch.linspace(0, 2 * torch.pi, num_grid_points)
-    phi_grid, psi_grid = torch.meshgrid(range_phi, range_psi, indexing='ij')
-    x = torch.stack((phi_grid, psi_grid), dim=-1).to(device).reshape(-1, 2)
-    
-    # Use embedding layer for conditioning
-    cond_tensor = torch.tensor([cond_index], device=device, dtype=torch.long)
-    c_embedding = embedding_layer(cond_tensor)
-    
-    # Repeat embedding for all grid points
-    c = c_embedding.repeat(x.shape[0], 1)
-    
-    # Calculate log probabilities
-    log_prob = model(c).log_prob(x).cpu()
-
-    # Create contour plot
-    phi, psi = x[..., 0].cpu(), x[..., 1].cpu()
-    contours = ax.tricontourf(phi, psi, log_prob, levels=levels, cmap="viridis")
-    cbar = plt.colorbar(contours)
-    cbar.set_label("Log density", fontsize=fontsizes.get("LABELSIZE"))
-    cbar.ax.tick_params(labelsize=fontsizes.get("TICKSIZE"))
-
-    # Set plot limits: φ in [-π, π], ψ in [0, 2π]
-    ax.set_xlim(-torch.pi, torch.pi)
-    ax.set_ylim(0, 2 * torch.pi)
-
-    # Set ticks for φ axis (horizontal) - [-π, π]
-    ax.set_xticks(
-        [-torch.pi, -torch.pi/2, 0, torch.pi/2, torch.pi],
-        [r"$-\pi$", r"$-\frac{\pi}{2}$", r"$0$", r"$\frac{\pi}{2}$", r"$\pi$"],
-    )
-    
-    # Set ticks for ψ axis (vertical) - [0, 2π]
-    ax.set_yticks(
-        [0, torch.pi/2, torch.pi, 3*torch.pi/2, 2*torch.pi],
-        [r"$0$", r"$\frac{\pi}{2}$", r"$\pi$", r"$\frac{3\pi}{2}$", r"$2\pi$"],
-    )
-    
-    ax.tick_params(labelsize=fontsizes.get("TICKSIZE"))
-
-    ax.set_xlabel(r"$\Phi$", fontsize=fontsizes.get("LABELSIZE"))
-    ax.set_ylabel(r"$\Psi$", fontsize=fontsizes.get("LABELSIZE"))
-
-    # Add reference data if provided - ONLY FOR THE CURRENT cond_index
-    if reference_data is not None and reference_cond is not None:
-        # Filter data points that belong to the current condition
-        mask = (reference_cond == cond_index)
-        filtered_data = reference_data[mask]
-        
-        if len(filtered_data) > 0:
-            # Convert ψ values to [0, 2π] range while keeping φ in [-π, π]
-            ref_phi = filtered_data[..., 0]
-            ref_psi = filtered_data[..., 1] % (2 * torch.pi)  # Wrap ψ to [0, 2π]
-            
-            ax.scatter(
-                ref_phi,
-                ref_psi,
-                s=7,
-                c="red",
-                alpha=0.6,
-            )
-
-    ax.set_title(f"Log density | cond_idx={cond_index}", fontsize=fontsizes.get("TITLESIZE"))
-    return ax.figure
-
-
-# Save metrics and plots
-# Loss curves
-fig = plt.figure()
-plt.plot(train_losses, label="train")
-plt.plot(val_losses, label="val")
-plt.xlabel("epoch")
-plt.ylabel("NLL")
-plt.legend()
-plt.tight_layout()
-fig.savefig(os.path.join(save_dir, "loss_curves.png"), dpi=150)
-plt.close(fig)
-
-# Save metrics CSV
-with open(os.path.join(save_dir, "metrics.csv"), "w", newline="") as f:
-    writer = csv.writer(f)
-    writer.writerow(["epoch", "train_loss", "val_loss"])
-    for i, (tr, va) in enumerate(zip(train_losses, val_losses), 1):
-        writer.writerow([i, tr, va])
-
-# Contour plots for specified indices
-# step = 50
-# indices = np.arange(0, n_cond, step).tolist()
-
-allset = torch.cat([trainset, valset], dim=0)
-allcond = torch.cat([traincond, valcond], dim=0)
-n_cond = int(allcond.max().item()) + 1
-indices = [100 * i for i in range(5)]
-for idx in indices:
-    fig = plot_model_log_densities(
-        flow,
-        embedding_layer=embedding,
-        reference_data=allset.cpu(),
-        reference_cond=allcond.cpu(),
-        cond_index=idx,
-    )
-
-    fig.savefig(os.path.join(save_dir, f"contour_cond_{idx}.png"), dpi=150, bbox_inches="tight")
-    plt.close(fig)
-
-# Additional: Plot embeddings to visualize learned condition representations
-@torch.no_grad()
-def plot_embeddings(embedding_layer, save_path):
-    """Visualize the learned embedding space"""
-    embedding_layer.eval()
-    
-    # Get all embeddings
-    all_indices = torch.arange(embedding_layer.num_embeddings, device=device)
-    embeddings = embedding_layer(all_indices)
-    
-    embeddings = embeddings.cpu().numpy()
-    
-    n_samples, n_features = embeddings.shape
-   
-    # Apply PCA 
-    if n_samples > 1 and n_features > 1:
-        try:
-            from sklearn.decomposition import PCA
-            n_components = min(2, n_samples, n_features)
-            pca = PCA(n_components=n_components)
-            embeddings_2d = pca.fit_transform(embeddings)
-            
-            fig, ax = plt.subplots(figsize=(10, 8))
-            if n_components == 2:
-                scatter = ax.scatter(embeddings_2d[:, 0], embeddings_2d[:, 1], 
-                                    c=all_indices.cpu().numpy(), cmap='viridis', alpha=0.7)
-                ax.set_xlabel('PC1')
-                ax.set_ylabel('PC2')
-            else:
-                scatter = ax.scatter(embeddings_2d[:, 0], np.zeros_like(embeddings_2d[:, 0]),
-                                    c=all_indices.cpu().numpy(), cmap='viridis', alpha=0.7)
-                ax.set_xlabel('PC1')
-                ax.set_yticks([])
-            
-            plt.colorbar(scatter, label='Condition Index')
-            ax.set_title(f'Embedding Space Visualization (n_components={n_components})')
-            plt.tight_layout()
-            fig.savefig(save_path, dpi=150, bbox_inches="tight")
-            plt.close(fig)
-            
-        except Exception as e:
-            print(f"PCA failed: {e}")
-    else:
-        print(f"Cannot perform PCA: n_samples={n_samples}, n_features={n_features}")
-        
-        fig, ax = plt.subplots(figsize=(14, 6))
-        
-        # scatter plot
-        scatter = ax.scatter(embeddings[:, 0], np.zeros_like(embeddings[:, 0]), 
-                          c=all_indices.cpu().numpy(), cmap='viridis', alpha=0.7, s=50)
-        
-        for i, (x, y) in enumerate(zip(embeddings[:, 0], np.zeros_like(embeddings[:, 0]))):
-            ax.annotate(f'{i}', (x, y), xytext=(0, 10), 
-                       textcoords='offset points', ha='center', fontsize=8, alpha=0.7)
-        
-        plt.colorbar(scatter, label='Condition Index')
-        ax.set_xlabel('Embedding Value')
-        ax.set_yticks([])
-        ax.set_title(f'1D Embedding Space (n_samples={n_samples})')
-        plt.tight_layout()
-        fig.savefig(save_path, dpi=150, bbox_inches="tight")
-        plt.close(fig)
-
-# Plot embedding visualization
-plot_embeddings(embedding, os.path.join(save_dir, "embedding_space.png"))
+# Save metrics and checkpoint using train_utils (no plotting here)
+run_path = ensure_run_folder(args.save_dir, args.dataset, run_name)
+save_metrics_csv(run_path, train_losses, val_losses)
+save_config_and_checkpoint(run_path, flow.state_dict(), config, cond_dim, embedding.state_dict())

@@ -34,6 +34,8 @@ parser.add_argument("--inspect", action="store_true")
 parser.add_argument("--quiet", action="store_true")
 parser.add_argument("--dataset", type=str, default="torus_protein",
                     help="Dataset name to load (e.g., 'torus_protein' or 'scop_easy')")
+parser.add_argument("--tag", type=str, default=None,
+                    help="Optional tag to group paired runs (e.g., 'exp01'). If set, tag will be used as run folder name to match paired runs.")
 args = parser.parse_args()
 
 # Utility to optionally suppress stdout (e.g., to silence dataset prints)
@@ -53,7 +55,10 @@ def suppress_stdout(enabled: bool = True):
 set_seed(args.seed)
 
 # Keep run name compact: include only batch-size, epochs and hidden-dim
-run_name = f"uncond_bs{args.batch_size}_ep{args.epochs}_hd{args.hidden_dim}"
+if args.tag:
+    run_name = f"{args.tag}"
+else:
+    run_name = f"uncond_bs{args.batch_size}_ep{args.epochs}_hd{args.hidden_dim}"
 # Make save directory dataset-aware so results for different datasets go to separate folders
 save_dir = os.path.join(args.save_dir, args.dataset, run_name)
 os.makedirs(save_dir, exist_ok=True)
@@ -86,6 +91,7 @@ config = {
     "patience": args.patience,
     "seed": args.seed,
     "dataset": args.dataset,
+    "tag": args.tag,
 }
 
 trainloader = torch.utils.data.DataLoader(trainset, batch_size=config["batch_size"], shuffle=True)
@@ -160,117 +166,10 @@ if not args.quiet:
     # print(f"Test Loss (NLL): {test_loss:.3f}")
     print(f"Artifacts saved to: {save_dir}")
 
-from typing import Optional
-import matplotlib.pyplot as plt
+from fff.train_utils import save_config_and_checkpoint, save_metrics_csv, ensure_run_folder
 
-@torch.no_grad()
-def plot_model_log_densities(
-    model,
-    reference_data=None,
-    cond_index: int = 0,
-    num_grid_points: int = 200,
-    levels: int = 10,
-    ax: Optional[plt.Axes] = None,
-    fontsizes: dict = dict(TITLESIZE=18, LABELSIZE=16, TICKSIZE=14),
-):
-    """
-    Plot log density contours for unconditional model.
-    Uses [-π, π] for φ and [0, 2π] for ψ to avoid discontinuity at ψ=0.
-    
-    Args:
-        model: Trained unconditional flow model
-        reference_data: Optional validation data to scatter plot
-        cond_index: Condition index (for compatibility, not used in unconditional)
-        num_grid_points: Resolution of the grid
-        levels: Number of contour levels
-        ax: Matplotlib axes to plot on
-        fontsizes: Font size settings
-    """
-    
-    if ax is None:
-        fig = plt.figure(figsize=(6, 5))
-        ax = fig.add_subplot(111)
-
-    # Create grid for visualization: φ in [-π, π], ψ in [0, 2π]
-    range_phi = torch.linspace(-torch.pi, torch.pi, num_grid_points)
-    range_psi = torch.linspace(0, 2 * torch.pi, num_grid_points)
-    phi_grid, psi_grid = torch.meshgrid(range_phi, range_psi, indexing='ij')
-    x = torch.stack((phi_grid, psi_grid), dim=-1).to(device).reshape(-1, 2)
-    
-    # For unconditional model, create dummy condition tensor
-    c = torch.zeros(x.shape[0], cond_dim, device=device, dtype=x.dtype)
-    c[:, 0] = cond_index
-    
-    # Calculate log probabilities
-    log_prob = model(c).log_prob(x).cpu()
-
-    # Create contour plot
-    phi, psi = x[..., 0].cpu(), x[..., 1].cpu()
-    contours = ax.tricontourf(phi, psi, log_prob, levels=levels, cmap="viridis")
-    cbar = plt.colorbar(contours)
-    cbar.set_label("Log density", fontsize=fontsizes.get("LABELSIZE"))
-    cbar.ax.tick_params(labelsize=fontsizes.get("TICKSIZE"))
-
-    # Set plot limits: φ in [-π, π], ψ in [0, 2π]
-    ax.set_xlim(-torch.pi, torch.pi)
-    ax.set_ylim(0, 2 * torch.pi)
-
-    # Set ticks for φ axis (horizontal) - [-π, π]
-    ax.set_xticks(
-        [-torch.pi, -torch.pi/2, 0, torch.pi/2, torch.pi],
-        [r"$-\pi$", r"$-\frac{\pi}{2}$", r"$0$", r"$\frac{\pi}{2}$", r"$\pi$"],
-    )
-    
-    # Set ticks for ψ axis (vertical) - [0, 2π]
-    ax.set_yticks(
-        [0, torch.pi/2, torch.pi, 3*torch.pi/2, 2*torch.pi],
-        [r"$0$", r"$\frac{\pi}{2}$", r"$\pi$", r"$\frac{3\pi}{2}$", r"$2\pi$"],
-    )
-    
-    ax.tick_params(labelsize=fontsizes.get("TICKSIZE"))
-
-    ax.set_xlabel(r"$\Phi$", fontsize=fontsizes.get("LABELSIZE"))
-    ax.set_ylabel(r"$\Psi$", fontsize=fontsizes.get("LABELSIZE"))
-
-    # Add reference data if provided
-    if reference_data is not None:
-        # Convert ψ values to [0, 2π] range while keeping φ in [-π, π]
-        ref_phi = reference_data[..., 0]
-        ref_psi = reference_data[..., 1] % (2 * torch.pi)  # Wrap ψ to [0, 2π]
-        
-        ax.scatter(
-            ref_phi,
-            ref_psi,
-            s=1 / len(reference_data) * 2e3,
-            c="black",
-            alpha=0.2,
-            label="validation data",
-        )
-
-    ax.set_title("Log density", fontsize=fontsizes.get("TICKSIZE"))
-    return ax.figure
-
-# Save metrics and plots
-# Loss curves
-fig = plt.figure()
-plt.plot(train_losses, label="train")
-plt.plot(val_losses, label="val")
-plt.xlabel("epoch")
-plt.ylabel("NLL")
-plt.legend()
-plt.tight_layout()
-fig.savefig(os.path.join(save_dir, "loss_curves.png"), dpi=150)
-plt.close(fig)
-
-# Save metrics CSV
-with open(os.path.join(save_dir, "metrics.csv"), "w", newline="") as f:
-    writer = csv.writer(f)
-    writer.writerow(["epoch", "train_loss", "val_loss"])
-    for i, (tr, va) in enumerate(zip(train_losses, val_losses), 1):
-        writer.writerow([i, tr, va])
-
-idx = 0
-fig = plot_model_log_densities(flow, valset.cpu(), cond_index=idx)
-fig.savefig(os.path.join(save_dir, f"contour_cond_{idx}.png"), dpi=150, bbox_inches="tight")
-plt.close(fig)
+# Save metrics and checkpoint using train_utils (no plotting here)
+run_path = ensure_run_folder(args.save_dir, args.dataset, run_name)
+save_metrics_csv(run_path, train_losses, val_losses)
+save_config_and_checkpoint(run_path, flow.state_dict(), config, cond_dim)
 
