@@ -121,18 +121,20 @@ if args.dataset is not None:
     reports_dir = os.path.join(reports_dir, args.dataset)
 os.makedirs(reports_dir, exist_ok=True)
 
-# Load full dataset (train + val)
-protein_dataset = load_dataset("torus_protein", root="./fff/data", condition_on="residue")
-trainset, valset = [convert_to_angles(ds[:][0].to(device)) for ds in protein_dataset]
-traincond, valcond = [ds[:][1].to(device) for ds in protein_dataset]
+def _is_run_folder(path: str) -> bool:
+    """Return True if path looks like a single run folder (contains best_flow.pt and metrics.csv)."""
+    return os.path.isdir(path) and os.path.exists(os.path.join(path, "best_flow.pt"))
 
-allset = torch.cat([trainset, valset], dim=0)
-allcond = torch.cat([traincond, valcond], dim=0)
 
-# Iterate over run folders
-for run_folder in os.listdir(runs_dir):
-    run_path = os.path.join(runs_dir, run_folder)
-    if not os.path.isdir(run_path):
+# If runs_dir points to a single run folder, process just that; otherwise iterate its subfolders
+run_paths = []
+if _is_run_folder(runs_dir):
+    run_paths = [runs_dir]
+else:
+    run_paths = [os.path.join(runs_dir, d) for d in os.listdir(runs_dir)]
+
+for run_path in run_paths:
+    if not _is_run_folder(run_path):
         continue
 
     ckpt_path = os.path.join(run_path, "best_flow.pt")
@@ -144,6 +146,18 @@ for run_folder in os.listdir(runs_dir):
     epochs = config["epochs"]
     batch_size = config["batch_size"]
     cond_dim = ckpt["cond_dim"]
+
+    # Load the dataset specified in the checkpoint config if present, else fall back to args.dataset or torus_protein
+    ds_name = config.get("dataset", args.dataset if args.dataset is not None else "torus_protein")
+    ds_root = "./fff/data"
+    if ds_name.startswith("scop"):
+        ds_root = "."
+    protein_dataset = load_dataset(ds_name, root=ds_root, condition_on="residue")
+    trainset, valset = [convert_to_angles(ds[:][0].to(device)) for ds in protein_dataset]
+    traincond, valcond = [ds[:][1].to(device) for ds in protein_dataset]
+
+    allset = torch.cat([trainset, valset], dim=0)
+    allcond = torch.cat([traincond, valcond], dim=0)
 
     # ------------------ embedding loader ------------------
     embedding = None

@@ -96,7 +96,8 @@ config = {
     "batch_size": args.batch_size,
     "patience": args.patience,
     "seed": args.seed,
-    "embedding_dim": args.embedding_dim
+    "embedding_dim": args.embedding_dim,
+    "dataset": args.dataset,
 }
 
 from torch.utils.data import TensorDataset

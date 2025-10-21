@@ -85,6 +85,7 @@ config = {
     "batch_size": args.batch_size,
     "patience": args.patience,
     "seed": args.seed,
+    "dataset": args.dataset,
 }
 
 trainloader = torch.utils.data.DataLoader(trainset, batch_size=config["batch_size"], shuffle=True)
