@@ -24,7 +24,8 @@ def plot_model_log_densities(
     num_grid_points: int = 200,
     levels: int = 10,
     ax: Optional[plt.Axes] = None,
-    fontsizes: dict = dict(TITLESIZE=18, LABELSIZE=16, TICKSIZE=14),
+        fontsizes: dict = dict(TITLESIZE=12, LABELSIZE=16, TICKSIZE=14),
+    cond_label: Optional[str] = None,
 ):
     """Plot log density contours for flow models (both unconditional and conditional)."""
 
@@ -94,9 +95,9 @@ def plot_model_log_densities(
                 ref_psi = filtered[..., 1] % (2 * torch.pi)
                 ax.scatter(ref_phi, ref_psi, s=7, c="red", alpha=0.6)
 
-    title = "Log density"
-    if embedding_layer is not None:
-        title += f" | cond={cond_index}"
+    # Title: show only the provided cond_label (which includes protein_name and category)
+    # Do not include the 'cond=XXX' prefix to keep titles shorter per user request.
+    title = cond_label if cond_label is not None else ""
     ax.set_title(title, fontsize=fontsizes.get("TITLESIZE"))
 
     return ax.figure
@@ -226,6 +227,58 @@ for run_path in run_paths:
         raise KeyError(f"No flow state_dict found in checkpoint: {ckpt.keys()}")
     flow.eval()
 
+    # ----- Prepare SCOP mapping if needed -----
+    scop_mapping = None
+    if embedding is not None and ds_name is not None and ds_name.startswith("scop"):
+        try:
+            # determine subset name used by get_scop_dataset (e.g. 'easy' for 'scop_easy')
+            subset = ds_name.split("scop_")[-1] if ds_name != "scop" else "easy"
+            scop_csv = os.path.join(ds_root, "SCOP", subset, "data.csv")
+            if os.path.exists(scop_csv):
+                df_scop = pd.read_csv(scop_csv)
+                # choose protein identifier column
+                if "protein_name" in df_scop.columns:
+                    prot_col = "protein_name"
+                elif "pdb_id" in df_scop.columns:
+                    prot_col = "pdb_id"
+                elif "domain_id" in df_scop.columns:
+                    prot_col = "domain_id"
+                else:
+                    id_cols = [c for c in df_scop.columns if "protein" in c.lower() or "id" in c.lower()]
+                    prot_col = id_cols[0] if id_cols else None
+
+                if prot_col is not None:
+                    codes, uniques = pd.factorize(df_scop[prot_col])
+
+                    # build category list and protein_name for each unique (take first occurrence)
+                    categories = []
+                    names = []
+                    for i, u in enumerate(uniques):
+                        mask = codes == i
+                        rows_for_protein = df_scop[mask]
+                        # (Previously printed debug info about each protein; removed to clean output.)
+
+                        # prefer 'category' column for labeling, fall back to 'class'
+                        if "category" in df_scop.columns:
+                            cat = df_scop.loc[mask, "category"].iloc[0]
+                        elif "class" in df_scop.columns:
+                            cat = df_scop.loc[mask, "class"].iloc[0]
+                        else:
+                            cat = ""
+                        categories.append(str(cat))
+
+                        # prefer to show 'protein_name' in titles; fall back to the unique value
+                        if "protein_name" in df_scop.columns:
+                            nm = df_scop.loc[mask, "protein_name"].iloc[0]
+                        else:
+                            nm = u
+                        names.append(str(nm))
+
+                    scop_mapping = {i: {"name": names[i], "category": categories[i]} for i in range(len(uniques))}
+        except Exception as e:
+            print(f"Warning: Failed to create SCOP mapping: {e}")
+            scop_mapping = None
+
     # ----- Plot densities -----
     if embedding is None:
         # Only one plot for unconditional model
@@ -240,11 +293,79 @@ for run_path in run_paths:
         plt.close(fig)
     else:
         # Multiple plots for conditional model: pick up to 5 evenly spaced condition indices
-        n_cond = int(allcond.max().item()) + 1
+        # For SCOP datasets, use number of unique proteins from mapping
+        if scop_mapping is not None:
+            n_cond = len(scop_mapping)
+        else:
+            n_cond = int(allcond.max().item()) + 1
+
         num_to_plot = min(5, n_cond)
         import numpy as _np
         indices = _np.linspace(0, n_cond - 1, num=num_to_plot, dtype=int).tolist()
+
+        # If this is a SCOP dataset, try to read the SCOP CSV to map cond indices to protein name/class
+        scop_mapping = None
+        try:
+            if ds_name is not None and ds_name.startswith("scop"):
+                # determine subset name used by get_scop_dataset (e.g. 'easy' for 'scop_easy')
+                subset = ds_name.split("scop_")[-1] if ds_name != "scop" else "easy"
+                scop_csv = os.path.join(ds_root, "SCOP", subset, "data.csv")
+                if os.path.exists(scop_csv):
+                    df_scop = pd.read_csv(scop_csv)
+                    # choose protein identifier column
+                    if "protein_name" in df_scop.columns:
+                        prot_col = "protein_name"
+                    elif "pdb_id" in df_scop.columns:
+                        prot_col = "pdb_id"
+                    elif "domain_id" in df_scop.columns:
+                        prot_col = "domain_id"
+                    else:
+                        id_cols = [c for c in df_scop.columns if "protein" in c.lower() or "id" in c.lower()]
+                        prot_col = id_cols[0] if id_cols else None
+
+                    if prot_col is not None:
+                        codes, uniques = pd.factorize(df_scop[prot_col])
+                        # Factorization of protein identifiers (uniques contains unique proteins)
+
+                        # build category list and protein_name for each unique (take first occurrence)
+                        categories = []
+                        names = []
+                        for i, u in enumerate(uniques):
+                            mask = codes == i
+                            rows_for_protein = df_scop[mask]
+                            # per-protein inspection removed to reduce verbosity
+
+                            # prefer 'category' column for labeling, fall back to 'class'
+                            if "category" in df_scop.columns:
+                                cat = df_scop.loc[mask, "category"].iloc[0]
+                            elif "class" in df_scop.columns:
+                                cat = df_scop.loc[mask, "class"].iloc[0]
+                            else:
+                                cat = ""
+                            categories.append(str(cat))
+
+                            # prefer to show 'protein_name' in titles; fall back to the unique value
+                            if "protein_name" in df_scop.columns:
+                                nm = df_scop.loc[mask, "protein_name"].iloc[0]
+                            else:
+                                nm = u
+                            names.append(str(nm))
+
+                        scop_mapping = {i: {"name": names[i], "category": categories[i]} for i in range(len(uniques))}
+        except Exception:
+            scop_mapping = None
+
         for idx in indices:
+            # determine cond_label when available for SCOP
+            cond_label = None
+            if scop_mapping is not None and int(idx) in scop_mapping:
+                info = scop_mapping[int(idx)]
+                # sanitize strings for title/filename
+                def _safe(s):
+                    return str(s).replace(" ", "_").replace("/", "_").replace("\\\\", "_")
+
+                cond_label = f"name={info['name']} | category={info.get('category', '')}"
+
             fig = plot_model_log_densities(
                 flow,
                 cond_dim,
@@ -252,7 +373,9 @@ for run_path in run_paths:
                 reference_data=allset.cpu(),
                 reference_cond=allcond.cpu(),
                 cond_index=int(idx),
+                cond_label=cond_label,
             )
+            # Always keep filenames simple: include only cond index to avoid filesystem issues
             save_name = f"{file_prefix}_cond{idx}.png"
             fig.savefig(os.path.join(reports_dir, save_name), dpi=150, bbox_inches="tight")
             plt.close(fig)
