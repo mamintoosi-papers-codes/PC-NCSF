@@ -71,6 +71,7 @@ SCOP/
 
 # Project-specific data directory (keep placeholders)
 # fff/data/
+!fff/data/scop.py
 !fff/data/.gitkeep
 !fff/data/README.md
 
