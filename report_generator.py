@@ -227,56 +227,81 @@ for run_path in run_paths:
         raise KeyError(f"No flow state_dict found in checkpoint: {ckpt.keys()}")
     flow.eval()
 
-    # ----- Prepare SCOP mapping if needed -----
+    # ----- Prepare mapping for datasets with condition labels (SCOP, TORUS) -----
     scop_mapping = None
-    if embedding is not None and ds_name is not None and ds_name.startswith("scop"):
+    if embedding is not None and ds_name is not None:
         try:
-            # determine subset name used by get_scop_dataset (e.g. 'easy' for 'scop_easy')
-            subset = ds_name.split("scop_")[-1] if ds_name != "scop" else "easy"
-            scop_csv = os.path.join(ds_root, "SCOP", subset, "data.csv")
-            if os.path.exists(scop_csv):
-                df_scop = pd.read_csv(scop_csv)
-                # choose protein identifier column
-                if "protein_name" in df_scop.columns:
-                    prot_col = "protein_name"
-                elif "pdb_id" in df_scop.columns:
-                    prot_col = "pdb_id"
-                elif "domain_id" in df_scop.columns:
-                    prot_col = "domain_id"
-                else:
-                    id_cols = [c for c in df_scop.columns if "protein" in c.lower() or "id" in c.lower()]
-                    prot_col = id_cols[0] if id_cols else None
+            # SCOP: mapping comes from SCOP CSV under project root
+            if ds_name.startswith("scop"):
+                subset = ds_name.split("scop_")[-1] if ds_name != "scop" else "easy"
+                scop_csv = os.path.join(ds_root, "SCOP", subset, "data.csv")
+                if os.path.exists(scop_csv):
+                    df_scop = pd.read_csv(scop_csv)
+                    # choose protein identifier column
+                    if "protein_name" in df_scop.columns:
+                        prot_col = "protein_name"
+                    elif "pdb_id" in df_scop.columns:
+                        prot_col = "pdb_id"
+                    elif "domain_id" in df_scop.columns:
+                        prot_col = "domain_id"
+                    else:
+                        id_cols = [c for c in df_scop.columns if "protein" in c.lower() or "id" in c.lower()]
+                        prot_col = id_cols[0] if id_cols else None
 
-                if prot_col is not None:
-                    codes, uniques = pd.factorize(df_scop[prot_col])
+                    if prot_col is not None:
+                        codes, uniques = pd.factorize(df_scop[prot_col])
+                        # build category list and protein_name for each unique (take first occurrence)
+                        categories = []
+                        names = []
+                        for i, u in enumerate(uniques):
+                            mask = codes == i
+                            # prefer 'category' column for labeling, fall back to 'class'
+                            if "category" in df_scop.columns:
+                                cat = df_scop.loc[mask, "category"].iloc[0]
+                            elif "class" in df_scop.columns:
+                                cat = df_scop.loc[mask, "class"].iloc[0]
+                            else:
+                                cat = ""
+                            categories.append(str(cat))
 
-                    # build category list and protein_name for each unique (take first occurrence)
+                            # prefer to show 'protein_name' in titles; fall back to the unique value
+                            if "protein_name" in df_scop.columns:
+                                nm = df_scop.loc[mask, "protein_name"].iloc[0]
+                            else:
+                                nm = u
+                            names.append(str(nm))
+
+                        scop_mapping = {i: {"name": names[i], "category": categories[i]} for i in range(len(uniques))}
+
+            # TORUS: mapping comes from the raw TSV under fff/data/raw_data/torus
+            elif ds_name.startswith("torus"):
+                torus_tsv = os.path.join(ds_root, "raw_data", "torus", "protein.tsv")
+                if os.path.exists(torus_tsv):
+                    df_torus = pd.read_csv(torus_tsv, delimiter="\t", header=None)
+                    # expected columns: name, phi, psi, subtype
+                    df_torus.columns = ["name", "phi", "psi", "subtype"]
+
+                    # helper used in the torus dataset loader: extract first token before ':'
+                    def _extract_res(name: str) -> str:
+                        return str(name).split(":")[0].upper()
+
+                    # Determine classes used when condition_on == 'residue'
+                    classes = sorted(set(_extract_res(n) for n in df_torus["name"].values))
+                    # Build mapping: for each class, take the first matching row's subtype as category
                     categories = []
                     names = []
-                    for i, u in enumerate(uniques):
-                        mask = codes == i
-                        rows_for_protein = df_scop[mask]
-                        # (Previously printed debug info about each protein; removed to clean output.)
-
-                        # prefer 'category' column for labeling, fall back to 'class'
-                        if "category" in df_scop.columns:
-                            cat = df_scop.loc[mask, "category"].iloc[0]
-                        elif "class" in df_scop.columns:
-                            cat = df_scop.loc[mask, "class"].iloc[0]
+                    for i, cls in enumerate(classes):
+                        mask = df_torus["name"].apply(lambda n: _extract_res(n) == cls)
+                        names.append(cls)
+                        if mask.any() and "subtype" in df_torus.columns:
+                            # take first subtype occurrence for this class
+                            categories.append(str(df_torus.loc[mask, "subtype"].iloc[0]))
                         else:
-                            cat = ""
-                        categories.append(str(cat))
+                            categories.append("")
 
-                        # prefer to show 'protein_name' in titles; fall back to the unique value
-                        if "protein_name" in df_scop.columns:
-                            nm = df_scop.loc[mask, "protein_name"].iloc[0]
-                        else:
-                            nm = u
-                        names.append(str(nm))
-
-                    scop_mapping = {i: {"name": names[i], "category": categories[i]} for i in range(len(uniques))}
+                    scop_mapping = {i: {"name": names[i], "category": categories[i]} for i in range(len(classes))}
         except Exception as e:
-            print(f"Warning: Failed to create SCOP mapping: {e}")
+            print(f"Warning: Failed to create SCOP/torus mapping: {e}")
             scop_mapping = None
             # Reuse any existing `scop_mapping` created earlier. The mapping was prepared
             # above (if applicable) to avoid reading the SCOP CSV multiple times.
