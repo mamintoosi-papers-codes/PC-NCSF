@@ -278,6 +278,11 @@ for run_path in run_paths:
         except Exception as e:
             print(f"Warning: Failed to create SCOP mapping: {e}")
             scop_mapping = None
+            # Reuse any existing `scop_mapping` created earlier. The mapping was prepared
+            # above (if applicable) to avoid reading the SCOP CSV multiple times.
+            # If no mapping is available, `scop_mapping` remains whichever value was
+            # set earlier (possibly None) and the code below will fall back to
+            # deriving condition count from the condition tensor.
 
     # ----- Plot densities -----
     if embedding is None:
@@ -303,57 +308,10 @@ for run_path in run_paths:
         import numpy as _np
         indices = _np.linspace(0, n_cond - 1, num=num_to_plot, dtype=int).tolist()
 
-        # If this is a SCOP dataset, try to read the SCOP CSV to map cond indices to protein name/class
-        scop_mapping = None
-        try:
-            if ds_name is not None and ds_name.startswith("scop"):
-                # determine subset name used by get_scop_dataset (e.g. 'easy' for 'scop_easy')
-                subset = ds_name.split("scop_")[-1] if ds_name != "scop" else "easy"
-                scop_csv = os.path.join(ds_root, "SCOP", subset, "data.csv")
-                if os.path.exists(scop_csv):
-                    df_scop = pd.read_csv(scop_csv)
-                    # choose protein identifier column
-                    if "protein_name" in df_scop.columns:
-                        prot_col = "protein_name"
-                    elif "pdb_id" in df_scop.columns:
-                        prot_col = "pdb_id"
-                    elif "domain_id" in df_scop.columns:
-                        prot_col = "domain_id"
-                    else:
-                        id_cols = [c for c in df_scop.columns if "protein" in c.lower() or "id" in c.lower()]
-                        prot_col = id_cols[0] if id_cols else None
-
-                    if prot_col is not None:
-                        codes, uniques = pd.factorize(df_scop[prot_col])
-                        # Factorization of protein identifiers (uniques contains unique proteins)
-
-                        # build category list and protein_name for each unique (take first occurrence)
-                        categories = []
-                        names = []
-                        for i, u in enumerate(uniques):
-                            mask = codes == i
-                            rows_for_protein = df_scop[mask]
-                            # per-protein inspection removed to reduce verbosity
-
-                            # prefer 'category' column for labeling, fall back to 'class'
-                            if "category" in df_scop.columns:
-                                cat = df_scop.loc[mask, "category"].iloc[0]
-                            elif "class" in df_scop.columns:
-                                cat = df_scop.loc[mask, "class"].iloc[0]
-                            else:
-                                cat = ""
-                            categories.append(str(cat))
-
-                            # prefer to show 'protein_name' in titles; fall back to the unique value
-                            if "protein_name" in df_scop.columns:
-                                nm = df_scop.loc[mask, "protein_name"].iloc[0]
-                            else:
-                                nm = u
-                            names.append(str(nm))
-
-                        scop_mapping = {i: {"name": names[i], "category": categories[i]} for i in range(len(uniques))}
-        except Exception:
-            scop_mapping = None
+        # The `scop_mapping` (if needed) is created earlier in the "Prepare SCOP mapping"
+        # block above. We avoid re-reading the SCOP CSV here to prevent duplication
+        # and potential inconsistencies — just reuse `scop_mapping` as populated
+        # above (or None if unavailable).
 
         for idx in indices:
             # determine cond_label when available for SCOP
