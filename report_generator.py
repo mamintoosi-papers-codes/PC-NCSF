@@ -329,7 +329,7 @@ for run_path in run_paths:
         else:
             n_cond = int(allcond.max().item()) + 1
 
-        num_to_plot = min(5, n_cond)
+        num_to_plot = min(8, n_cond)
         import numpy as _np
         indices = _np.linspace(0, n_cond - 1, num=num_to_plot, dtype=int).tolist()
 
