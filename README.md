@@ -1,4 +1,4 @@
-# Protein-Conditional Free-form Flows for Backbone Torsion Angle Modeling
+# Protein-Conditional Normalizing Flows on Manifolds for Backbone Torsion Angle Modeling
 
 This repository implements **Protein-Conditional Free-Form Flows (PC-FFF)** for **protein-specific** modeling of protein backbone torsion angle distributions on the torus manifold.
 
@@ -115,10 +115,10 @@ If you use this code in your research, please cite the original FFF papers:
 
 ```bibtex
 @inproceedings{PC-FFF2025,
-    title = {{Protein-Conditional Free-form Flows for Backbone Torsion Angle Modeling}},
+    title = {{Protein-Conditional Normalizing Flows on Manifolds for Backbone Torsion Angle Modeling}},
     author = {...},
-    booktitle = {arXiv},
-    year = {2025}
+    booktitle = {...},
+    year = {2026}
 }
 ```
 
