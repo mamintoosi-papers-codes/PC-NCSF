@@ -1,0 +1,1123 @@
+\documentclass{article}
+
+\usepackage{graphicx}
+\usepackage{tabularx}
+\usepackage{array}
+\usepackage{makecell}
+\usepackage{amsmath, amssymb}
+\usepackage{booktabs}
+\usepackage{caption}
+\usepackage[authoryear]{natbib}
+\usepackage{subcaption}
+\usepackage[a4paper,margin=1in]{geometry}
+\usepackage[colorlinks,citecolor=magenta]{hyperref}
+\usepackage{multirow}
+\usepackage{xcolor}
+%\usepackage{url}
+
+
+\title{Protein-Conditional Normalizing Flows on Manifolds for Backbone Torsion Angle Modeling}
+\author{
+Nooshin Akbari Sharak$^{1,2}$,
+Mahmood Amintoosi$^{3}$,
+Morteza Najibi$^{4,*}$,\\
+Mohammad~Taghi~Shakeri$^{5,*}$ \\
+$^{1}$Department of Biostatistics, School of Health,\\
+Mashhad University of Medical Sciences, Mashhad, Iran \\
+$^{2}$Student Research Committee, Department of Biostatistics, School of Health,\\
+Mashhad University of Medical Sciences, Mashhad, Iran \\
+\texttt{akbarisn962@mums.ac.ir} \\
+$^{3}$Division of Computer Science, 
+       Department of Applied Mathematics,\\
+       Faculty of Mathematical Sciences,
+       Ferdowsi University of Mashhad,\\
+       P. O. Box 1159, Mashhad 91775, Iran \\
+       \texttt{m.amintoosi@um.ac.ir}\\
+$^{4}$Department of Clinical Sciences, Section of Rheumatology,\\
+Lund University and Skåne University Hospital, Lund, Sweden \\
+\texttt{morteza.najibi@med.lu.se} \\
+$^{5}$Social Determinants of Health Research Center,\\
+Mashhad University of Medical Sciences, Mashhad, Iran \\
+\texttt{shakerimt@mums.ac.ir} \\
+$^{*}$Corresponding authors: 
+\texttt{morteza.najibi@med.lu.se}, 
+\texttt{shakerimt@mums.ac.ir}
+}
+
+
+\date{}
+
+\begin{document}
+
+
+\maketitle
+
+\begin{abstract}
+
+Angular representations play a central role in protein structure analysis, with backbone torsion angles providing a compact and physically meaningful description of local conformations. These variables naturally reside on non-Euclidean manifolds such as circles, tori, and spheres, making standard Euclidean density models unsuitable because they ignore periodicity and manifold geometry. Although normalizing flows provide a flexible framework for density estimation with exact likelihood evaluation, most existing methods are designed for Euclidean spaces or require approximations when applied to manifold-valued data.
+Standard Protein Neural Circular Spline Flows estimate a single probability distribution shared across all proteins, potentially overlooking protein-specific conformational characteristics. To address this limitation, we propose Protein-Conditional Neural Circular Spline Flows (PC-NCSF), which estimate protein-specific distributions while leveraging a shared statistical representation across the dataset. The proposed framework extends neural circular spline flows to toroidal and spherical manifolds through invertible, geometry-preserving transformations with tractable Jacobians. Protein-specific conformational preferences are incorporated through learnable protein embeddings that condition the flow parameters.
+We evaluate PC-NCSF on backbone torsion-angle data and spherical angular representations derived from protein structure databases. {\color{red} Experimental results show that protein conditioning generally improves held-out likelihood relative to the corresponding unconditional models across the evaluated real and synthetic datasets. The learned protein-specific densities further provide representations that can be compared through distributional distances for downstream analyses such as clustering.} The learned distributions respect the intrinsic topology and periodicity of the underlying manifolds while adapting to individual proteins. These findings establish PC-NCSF as a principled probabilistic framework for modeling protein angular data, with potential applications in protein structure analysis, classification, and generative modeling. \textcolor{red}{A current limitation is that the learned per-protein embeddings do not generalize to proteins unseen during training; extending the conditioning mechanism toward sequence- or structure-based encoders to support
+zero-shot generalization is an important direction for future work.} {\color{red} The implementation and supporting code used for the experiments are publicly available at \url{https://github.com/mamintoosi-papers-codes/CFFF}.}
+
+\textbf{keywords}:
+Protein structure modeling;
+Backbone torsion angles;
+Conditional normalizing flows;
+Circular statistics;
+Geometric deep learning;
+Structural bioinformatics
+
+\end{abstract}
+
+
+
+% =========================
+\section{Introduction}
+% =========================
+
+Learning probability distributions on non-Euclidean manifolds has attracted increasing attention in recent years. While normalizing flows provide a powerful framework for flexible density estimation with exact likelihood evaluation, most existing approaches implicitly assume Euclidean data domains. This assumption is restrictive in many scientific applications where data naturally reside on curved spaces, such as angular and directional measurements. Prominent examples include torsion angles in protein structures \cite{Hamelryck2006, Mardia2007, Boomsma2008, Shapovalov2011}, geological orientation data \cite{Peel2001}, and pose and motion representations in robotics \cite{Feiten2013,Senanayake2018}.
+
+In structural biology, protein backbone torsion angles $(\phi, \psi)$ are canonical examples of circular variables and naturally reside on compact manifolds such as the torus or the sphere. Crucially, these manifolds are characterized by periodic boundary conditions where the beginning and end of the range are topologically connected; standard Euclidean methods fail here as they treat these connected points as distant, introducing artificial discontinuities that violate the intrinsic geometry. These angles play a central role in determining local backbone geometry and encode fundamental secondary-structure motifs, reflecting constraints arising from steric hindrance, hydrogen bonding, and physicochemical properties of amino acids. Classical global representations such as the Ramachandran plot \cite{Ramachandran1963} provide coarse summaries of allowed conformational regions, but they obscure substantial heterogeneity across amino acid types, secondary-structure classes, and local sequence environments \cite{Hovmoller2002, Jha2005, Berkholz2009, Lennox2009}. As a result, global models fail to capture protein- or residue-specific torsion-angle distributions that are critical for tasks such as structure prediction, loop modeling, and model quality assessment.
+
+Existing approaches to learning distributions on manifolds can be broadly categorized into Euclidean approximations and manifold-aware architectures. Euclidean-based methods embed manifolds into $\mathbb{R}^n$ \cite{Gemici2016} or operate on Lie algebras \cite{Falorsi2019}, often introducing geometric distortions or boundary discontinuities. More recent methods employ overlapping charts \cite{Kalatzis2021} or higher-dimensional embeddings with off-manifold noise \cite{Brofos2021}, though many rely on variational bounds rather than exact likelihoods. Specialized manifold-aware flows have been developed for groups such as $\mathrm{SO}(3)$ and $\mathrm{SU}(d)$ \cite{Boyda2021,Kanwar2020,Liu2023}, as well as for tori and spheres \cite{Bose2020,Rezende2020}. Continuous-time models define flows via differential equations on tangent spaces \cite{Rozen2021,Falorsi2021,DeBortoli2022,Chen2024}, but density evaluation requires repeated numerical integration.
+
+Building on these advances, we propose PC-NCSF, a conditional normalizing flow framework for modeling protein angular data on compact manifolds. By augmenting neural circular spline flows with learned protein embeddings, our approach captures protein-specific conformational preferences while preserving the intrinsic manifold structure of torsion-angle spaces.
+
+From a practical perspective, the proposed framework provides a principled and flexible probabilistic model for protein backbone angle distributions while fully respecting their circular and spherical geometry. Angular representations and Ramachandran-type analyses have long played a central role in a wide range of protein structure–related tasks, including structure validation, structure prediction, model quality assessment, protein structure alignment, free energy modeling, molecular dynamics analysis, empirical energy functions, and backbone-dependent rotamer libraries. In this context, our method is intended as a more expressive and geometrically faithful statistical model for such angular data, replacing global or Euclidean approximations with protein-conditional density estimates defined directly on the underlying manifolds. In particular, more accurate modeling of backbone angle distributions is also relevant for protein structure classification in the Protein Data Bank, where reliable statistical descriptions of conformational preferences can help reveal structural and evolutionary relationships between proteins. \textcolor{red}{In particular, the estimated per-protein density functions
+can be treated as conformational fingerprints whose potential utility for
+density-based comparison and clustering can be evaluated using geometric
+discrepancy measures such as the Hellinger distance.}
+
+
+Our main contributions are:
+
+{\color{red}
+\begin{enumerate}
+    \item We formulate a protein-conditional extension of manifold normalizing
+    flows by jointly learning protein-identity embeddings and shared flow
+    parameters, yielding distinct, individually queryable protein-specific
+    angular densities.
+
+    \item We instantiate this conditional framework for toroidal and spherical
+    protein-angle representations while retaining tractable likelihood
+    evaluation and geometry-respecting transformations.
+
+    \item We evaluate the benefit of protein conditioning against unconditional
+    baselines on toroidal and spherical protein-angle datasets and, on the real
+    torus dataset, further compare PC-NCSF with a protein-conditional Riemannian
+    flow-matching baseline using paired protein-level statistical comparisons.
+
+    \item We investigate density-based clustering as a downstream application
+    of the learned protein-specific densities on both controlled synthetic data
+    and real SCOP datasets, demonstrating strong recovery of known classes in
+    controlled settings while identifying limited alignment between
+    density-based clusters and SCOP structural categories in real data.
+\end{enumerate}
+}
+
+{\color{red}
+An important distinction concerns the scope and novelty of the
+protein-conditional formulation. The geometric flow constructions on
+$\mathbb{S}^1$, $\mathbb{T}^D$, and $\mathbb{S}^D$ used in this work build
+on the manifold normalizing-flow framework of \cite{Rezende2020}; we
+therefore do not claim these geometric constructions themselves as a
+methodological contribution of the present study. Our contribution lies in
+integrating learnable protein-identity embeddings with a shared manifold
+flow, with the embeddings jointly optimized with the flow parameters to
+yield distinct, individually queryable protein-specific densities. In the
+revised study, we further evaluate this formulation against a
+protein-conditional Riemannian flow-matching baseline, providing a direct
+empirical comparison with a more recent continuous-time manifold
+generative-modeling approach.
+}
+
+{\color{red}
+The protein embedding represents protein identity within the set of proteins
+used to fit the model. Accordingly, PC-NCSF is designed for estimating and
+comparing the conformational distributions of proteins represented during
+training and should not be interpreted as a zero-shot model for predicting
+the torsion-angle distribution of a previously unseen protein. Extending the
+conditioning mechanism to sequence- or structure-based encoders is a
+promising direction for future work.
+}
+
+{\color{red}
+The rest of the paper is organized as follows. Section~2 presents the
+methodological framework, including manifold-valued flow constructions,
+protein-conditional embeddings, and the conditional likelihood formulation.
+Section~3 describes the datasets, experimental setup, and empirical results
+on toroidal, synthetic, and SCOP-derived data, including the flow-matching
+comparison and density-based clustering analyses. Section~4 concludes the
+paper and discusses the main findings, limitations, and directions for
+future work.
+}
+% =========================
+\section{Method}
+% =========================
+
+This section presents the mathematical foundations and model architecture of the proposed
+\emph{Protein-Conditional Neural Circular Spline Flow} (PC-NCSF) framework.
+Since angular variables arising in protein structure naturally reside on compact
+non-Euclidean manifolds, standard normalizing flows defined on $\mathbb{R}^n$ are not directly applicable.
+We therefore adopt and build upon manifold normalizing flow constructions that operate intrinsically on curved spaces, starting from the circle $\mathbb{S}^1$ as the fundamental building block, and extending the construction to product manifolds such as the torus $\mathbb{T}^D$ and to spherical manifolds $\mathbb{S}^D$ \cite{Rezende2020}.
+
+We first describe the geometric structure of protein angular representations and
+motivate the need for manifold-aware probabilistic models.
+We then review expressive families of diffeomorphic transformations on $\mathbb{S}^1$,
+including circular spline flows, and show how these transformations can be composed
+into tractable normalizing flows on higher-dimensional tori and spheres.
+Building on this geometric foundation, we introduce a neural parameterization of the flows
+and propose a protein-conditional extension via learned embeddings.
+Finally, we describe the training objective and provide a formal justification
+of the conditional likelihood used for optimization.
+
+
+\subsection{Geometric Structure of Protein Angle Representations}
+Protein backbone conformations are commonly described using angular coordinates derived either from a coarse-grained C$_\alpha$-trace representation or from a full backbone atom representation. {\color{red} These angular representations have non-Euclidean geometric structure and are therefore more naturally modeled on their corresponding compact manifolds than in unconstrained Euclidean space.}\cite{oldfield1994}.
+
+Figure~\ref{fig:protein_angles} illustrates the two representations considered in this work. {\color{red} In the C$\alpha$-trace representation, local geometry is parameterized by a pseudo-bond angle $\theta_i$ and a pseudo-torsion angle $\tau_i$ computed from consecutive C$\alpha$ atoms. Treating $\theta_i$ as the polar angle
+and $\tau_i$ as the azimuthal angle, the pair is mapped to the unit sphere
+$\mathbb{S}^2$}. In the full backbone representation, local structure is described by the Ramachandran dihedral angles $(\phi_i, \psi_i)$, which form a pair of periodic variables and thus naturally live on the two-dimensional torus $\mathbb{T}^2 = \mathbb{S}^1 \times \mathbb{S}^1$.
+
+Figure~\ref{fig:manifolds} summarizes the geometric domains arising from these constructions, including the torus $\mathbb{T}^2$ and the sphere $\mathbb{S}^2$. Because the data reside on curved manifolds rather than in Euclidean space, conventional normalizing flows must be adapted to respect the intrinsic geometry of these spaces.
+
+\begin{figure}[t]
+    \centering
+    \includegraphics[width=0.85\linewidth]{protein_angles.png}
+    \caption{Schematic representation of protein backbone angular coordinates. 
+    (A) C$_\alpha$-trace representation using pseudo-bond and pseudo-torsion angles $(\theta_i, \tau_i)$. 
+    (B) Full backbone representation using Ramachandran dihedral angles $(\phi_i, \psi_i)$.}
+    \label{fig:protein_angles}
+\end{figure}
+
+\begin{figure}[t]
+    \centering
+    \includegraphics[width=0.9\linewidth]{manifolds.png}
+    \caption{Examples of manifolds underlying angular protein representations: the sphere $\mathbb{S}^2$, the torus $\mathbb{T}^2 $.}
+    \label{fig:manifolds}
+\end{figure}
+
+\subsection{Flows on the Circle \texorpdfstring{$\mathbb{S}^1$}{S1}}
+\label{sec:flows_circle}
+We follow the construction of manifold normalizing flows introduced by
+\cite{Rezende2020}, and briefly summarize the key components
+required for circular, toroidal, and spherical domains.
+The unit circle $\mathbb{S}^1$ can be represented either as the embedded manifold
+\[
+\mathbb{S}^1 = \{ (x_1, x_2) \in \mathbb{R}^2 \mid x_1^2 + x_2^2 = 1 \},
+\]
+or equivalently by an angular coordinate $\theta \in [0, 2\pi)$ with the identification $0 \equiv 2\pi$. In this work, we primarily adopt the angular representation.
+
+A normalizing flow on $\mathbb{S}^1$ is an invertible, smooth, orientation-preserving mapping $f : \mathbb{S}^1 \to \mathbb{S}^1$. In angular coordinates, this corresponds to a function $f : [0, 2\pi] \to [0, 2\pi]$ satisfying the sufficient conditions
+\begin{align}
+f(0) &= 0, \\
+f(2\pi) &= 2\pi, \\
+f'(\theta) &> 0, \\
+f'(0) &= f'(2\pi).
+\end{align}
+The first two constraints ensure consistency with the periodic identification of the endpoints, strict positivity of the derivative guarantees invertibility, and the final condition enforces smoothness of the induced density across the boundary.
+
+Although these constraints fix the endpoints, this does not restrict expressivity in practice: any such transformation can be composed with a learnable phase shift $\theta \mapsto (\theta + \phi) \bmod 2\pi$, which preserves volume and therefore does not affect the Jacobian determinant.
+
+
+Given a collection of circle diffeomorphisms $\{ f_i \}_{i=1}^K$ satisfying these conditions, more expressive transformations can be constructed either by composition or by convex combination
+\begin{equation}
+\label{eq:convex_combination}
+f(\theta) = \sum_{i=1}^K \rho_i f_i(\theta),
+\qquad \rho_i \ge 0,
+\quad \sum_i \rho_i = 1 .
+\end{equation}
+Both constructions preserve monotonicity and boundary consistency.
+
+In the following, we describe three families of circle diffeomorphisms used in this work: Möbius-based flows, circular spline flows, and non-compact projection flows.
+
+\subsubsection{Möbius-Based Flows}\label{sec:moebius}
+
+Möbius transformations provide a classical family of smooth, geometry-preserving maps on spheres and have previously been used to define probability distributions on directional spaces. We briefly summarize their construction and describe how they can be adapted to define flows on $\mathbb{S}^1$.
+
+Let $\mathbb{S}^D \subset \mathbb{R}^{D+1}$ denote the unit sphere, and let $\omega \in \mathbb{R}^{D+1}$ be a vector satisfying $\|\omega\| < 1$. For any point $z \in \mathbb{S}^D$, consider the line passing through $z$ and $\omega$. This line intersects the sphere at exactly two points. Besides $z$, let $g_\omega(z)$ denote the second intersection point. The Möbius transformation centered at $\omega$ is defined as the antipodal reflection of this point.
+
+An explicit formula for this transformation is
+\begin{equation}
+h_\omega(z) = \frac{1 - \|\omega\|^2}{\|z - \omega\|^2} (z - \omega) - \omega.
+\end{equation}
+When $\omega = 0$, this map reduces to the identity. For $D=1$, the transformation acts on the unit circle and can equivalently be interpreted in the complex plane.
+
+Geometrically, $h_\omega$ expands regions of the sphere near $\omega$ and contracts regions farther away, allowing a uniform base density to be transformed into a smooth unimodal distribution. However, the family of Möbius transformations is closed under composition (up to rotations), which implies that stacking them does not increase expressive power.
+
+To obtain flexible flows on $\mathbb{S}^1$, we therefore convert $h_\omega$ into an angle-based mapping and combine multiple such transformations using convex combinations as in \eqref{eq:convex_combination}. A corrective rotation is applied so that the resulting angular map satisfies the required boundary conditions. While the resulting transformation is no longer analytically invertible, inversion can be performed efficiently using numerical root-finding (e.g., bisection), with logarithmic complexity in the desired precision.
+
+\subsubsection{Circular Spline Flows}\label{sec:circular_splines}
+
+Spline-based normalizing flows provide a powerful mechanism for constructing highly flexible monotonic transformations on one-dimensional domains. In particular, rational--quadratic splines define piecewise transformations composed of simple rational functions, while retaining exact invertibility and tractable Jacobians.
+
+A rational--quadratic spline on an interval is specified by a set of increasing knot locations $\{x_k\}_{k=0}^K$, corresponding outputs $\{y_k\}_{k=0}^K$, and positive derivatives $\{s_k\}_{k=0}^K$. On each interval $[x_{k-1}, x_k]$, the transformation is defined by a rational quadratic function whose coefficients are chosen such that the function matches the prescribed boundary values and derivatives.
+
+To construct a diffeomorphism of the circle, we restrict the domain to $[0, 2\pi]$ and enforce the constraints
+\[
+x_0 = y_0 = 0, \qquad x_K = y_K = 2\pi, \qquad s_0 = s_K.
+\]
+These conditions guarantee continuity, strict monotonicity, and matching derivatives at the endpoints, yielding a valid smooth mapping of $\mathbb{S}^1$ onto itself.
+
+We refer to this construction as a circular spline flow. Its expressive power can be increased arbitrarily by increasing the number of spline segments. Importantly, circular spline flows admit exact and efficient inversion: one first locates the appropriate segment via binary search and then analytically inverts the corresponding rational quadratic function.
+
+
+\subsubsection{Non-Compact Projection Flows}\label{sec:ncp}
+
+An alternative strategy for defining flows on manifolds is to map the manifold to a Euclidean space, apply a standard transformation there, and map the result back. When applied naively, this approach may suffer from numerical instabilities near the boundaries. Here, we describe a stable specialization of this idea for $\mathbb{S}^1$.
+
+We use the bijective projection
+\[
+x(\theta) = \tan\!\left( \frac{\theta}{2} - \frac{\pi}{2} \right),
+\]
+which maps $(0, 2\pi)$ to $\mathbb{R}$. Let $g(x) = \alpha x + \beta$ be an affine transformation with $\alpha > 0$. This induces a transformation on the circle via
+\begin{equation}
+f(\theta) = x^{-1}( g(x(\theta)) ) = 2 \tan^{-1}\!\left( \alpha \tan\!\left( \frac{\theta}{2} - \frac{\pi}{2} \right) + \beta \right) + \pi.
+\end{equation}
+
+Although $f$ is not explicitly defined at $\theta = 0$ and $\theta = 2\pi$, it admits well-defined limits and can be extended continuously to the closed interval. Moreover, the derivative satisfies
+\[
+f'(0) = f'(2\pi) = \alpha^{-1},
+\]
+ensuring smoothness at the boundary.
+
+We refer to this construction as a non-compact projection (NCP) flow. Since affine maps on $\mathbb{R}$ form a group, NCP flows are closed under composition, meaning that stacking them does not increase expressivity. As in the Möbius case, we therefore increase flexibility by forming convex combinations of multiple NCP transformations.
+
+For numerical stability, near the boundaries we evaluate $f$ using linearized approximations, e.g., $f(\theta) \approx \theta / \alpha$ for $\theta \approx 0$ and $f(\theta) \approx 2\pi + (\theta - 2\pi)/\alpha$ near $2\pi$.
+
+\subsection{Flows on the Torus \texorpdfstring{$\mathbb{T}^D$}{TD}}
+\label{sec:flows:torus}
+
+Following \cite{Rezende2020}, we construct flows on the torus
+as autoregressive compositions of circular diffeomorphisms.
+Having defined normalizing flows on the circle $\mathbb{S}^1$, we can naturally extend the construction to the $D$-dimensional torus
+\[
+\mathbb{T}^D \cong (\mathbb{S}^1)^D ,
+\]
+which arises as the Cartesian product of $D$ angular variables. This representation is particularly relevant for modeling protein backbone or pseudo-backbone angle vectors, which consist of multiple periodic coordinates.
+
+Any joint density $p(\theta_1, \ldots, \theta_D)$ on $\mathbb{T}^D$ can be decomposed using the chain rule of probability:
+\begin{equation}
+p(\theta_1, \ldots, \theta_D) = \prod_{i=1}^D p(\theta_i \mid \theta_1, \ldots, \theta_{i-1}),
+\end{equation}
+where each conditional density $p(\theta_i \mid \theta_1, \ldots, \theta_{i-1})$ is itself a density on the circle $\mathbb{S}^1$.
+
+Each conditional can be modeled using a circular diffeomorphism
+\[
+f_{\psi_i} : \mathbb{S}^1 \to \mathbb{S}^1,
+\]
+whose parameters $\psi_i$ are produced by a neural network (the \emph{conditioner}) as a function of the previous angles $(\theta_1, \ldots, \theta_{i-1})$. The resulting joint transformation
+\begin{equation}
+f(\theta_1, \ldots, \theta_D) = \big( f_{\psi_1}(\theta_1), \ldots, f_{\psi_D}(\theta_D) \big)
+\end{equation}
+defines an \emph{autoregressive flow} on the torus.
+
+As in standard autoregressive flows, the Jacobian of this transformation is triangular, and therefore the log-determinant of the Jacobian can be computed efficiently as a sum of the diagonal terms.
+
+To ensure periodicity of the conditioning functions, the conditioners can be implemented as functions of
+\[
+(\cos \theta_1, \sin \theta_1, \ldots, \cos \theta_{i-1}, \sin \theta_{i-1}),
+\]
+rather than the angles themselves. In practice, the conditioners can be implemented using either masked autoregressive networks or coupling layers.
+
+This construction provides a principled and efficient way to define expressive, tractable normalizing flows on the torus $\mathbb{T}^D$.
+
+\subsection{Flows on the Sphere \texorpdfstring{$\mathbb{S}^D$}{SD}}
+\label{sec:flows:sphere}
+
+Our construction of spherical normalizing flows is based on the recursive
+sphere-to-cylinder decomposition proposed in \cite{Rezende2020}.
+While the torus is appropriate for modeling collections of independent angular variables, certain representations of protein geometry naturally live on the sphere $\mathbb{S}^D$. For example, normalized directional vectors or constrained angular coordinates are more naturally modeled on spherical manifolds.
+
+Defining expressive normalizing flows directly on $\mathbb{S}^D$ for $D \geq 2$ is more challenging than in the circular case. Instead of relying on direct spherical transformations, we adopt a recursive construction based on a decomposition of the sphere into a lower-dimensional sphere and an interval.
+
+We represent the sphere as
+\[
+\mathbb{S}^D = \left\{ x \in \mathbb{R}^{D+1} \;:\; \|x\|_2 = 1 \right\},
+\]
+and define the transformation
+\begin{equation}
+T_{\mathbb{S} \to \mathbb{C}}(x) = \left( \frac{x_{1:D}}{\sqrt{1 - x_{D+1}^2}}, \; x_{D+1} \right),
+\end{equation}
+which maps the sphere (almost everywhere) to the cylinder $\mathbb{S}^{D-1} \times (-1, 1)$.
+
+On this cylindrical space, we apply an autoregressive transformation of the form
+\begin{equation}
+T_{\mathbb{C} \to \mathbb{C}}(z, r) = \big( f(z; g(r)), \; g(r) \big),
+\end{equation}
+where:
+\begin{itemize}
+\item $g : (-1,1) \to (-1,1)$ is a one-dimensional flow on the interval,
+\item $f : \mathbb{S}^{D-1} \to \mathbb{S}^{D-1}$ is a conditional spherical flow whose parameters depend on $g(r)$.
+\end{itemize}
+
+Finally, the inverse map back to the sphere is given by
+\begin{equation}
+T_{\mathbb{C} \to \mathbb{S}}(z, r) = \big( z \sqrt{1 - r^2}, \; r \big).
+\end{equation}
+
+The overall spherical flow is then defined as the composition
+\begin{equation}
+h = T_{\mathbb{C} \to \mathbb{S}} \circ T_{\mathbb{C} \to \mathbb{C}} \circ T_{\mathbb{S} \to \mathbb{C}}.
+\end{equation}
+
+By recursively applying this construction, the transformation on $\mathbb{S}^{D-1}$ can itself be decomposed into a flow on $\mathbb{S}^{D-2}$ and an interval, and so on, until reaching $\mathbb{S}^1$, where circular flows are used. This yields an expressive and tractable normalizing flow on $\mathbb{S}^D$.
+
+The change-of-variables terms induced by the maps $T_{\mathbb{S} \to \mathbb{C}}$ and $T_{\mathbb{C} \to \mathbb{S}}$ can be computed analytically, and the remaining transformations are autoregressive, making the overall log-likelihood evaluation efficient and numerically stable.
+
+\subsection{Conditional Modeling via Learned Protein Embeddings}
+\label{sec:conditional_embeddings}
+
+Unlike prior manifold flow constructions, we introduce a protein-conditional
+formulation in which flow parameters are modulated by learned protein embeddings.
+Each observation $(x_i, c_i)$ consists of an angular vector $x_i$ and an associated protein identifier $c_i \in \{1, \ldots, C\}$. We implement protein-level conditioning via a learnable embedding lookup table that maps each protein identifier to a trainable vector
+\begin{equation}
+e_c = \mathrm{Embed}(c) \in \mathbb{R}^{d_{\mathrm{emb}}}.
+\end{equation}
+These embeddings are concatenated with the angular inputs and provided to the conditioning networks that parameterize the flow transformations. This mechanism enables the model to learn protein-specific density transformations while sharing statistical strength across residues within the same protein and across the entire dataset.
+
+The embedding vectors are optimized jointly with the flow parameters by maximum likelihood and do not depend on explicit sequence or structural features. The model therefore learns one embedding per protein in the training set, which serves as a compact latent representation capturing protein-specific conformational preferences. While this design is computationally efficient and flexible for modeling large collections of known proteins, it does not directly support zero-shot generalization to previously unseen proteins. Extending the framework to incorporate sequence- or structure-based encoders is a promising direction for future work.
+
+\subsection{Training Objective}
+\label{sec:objective}
+
+Given a dataset $\mathcal{D} = \{(x_i, c_i)\}_{i=1}^N$, the model parameters, including both the flow parameters and the embedding table, are learned by minimizing the conditional negative log-likelihood
+\begin{equation}
+\mathcal{L} = -\frac{1}{N} \sum_{i=1}^N \log p_X(x_i \mid c_i),
+\end{equation}
+where the conditional density $p_X(x_i \mid c_i)$ is evaluated using the change-of-variables formula induced by the corresponding manifold-valued normalizing flow.
+
+
+\subsection{Conditional Change-of-Variables Formula}
+
+Let $f(\cdot; c): \mathcal{M} \to \mathcal{M}$ denote an invertible, differentiable map on a $d$-dimensional manifold $\mathcal{M}$, parameterized by a conditioning variable $c \in \{1,\dots,C\}$. Let $z \sim p_Z(z)$ be a base density on $\mathcal{M}$ and define the conditional generative model
+\begin{equation}
+x = f^{-1}(z; c).
+\end{equation}
+Then the conditional density $p_X(x \mid c)$ is given by
+\begin{equation}
+p_X(x \mid c) = p_Z(f(x; c)) \, \left| \det \frac{\partial f(x; c)}{\partial x} \right|.
+\end{equation}
+
+\paragraph{Proof.}
+For any fixed conditioning value $c$, the mapping $f(\cdot; c)$ is a diffeomorphism from $\mathcal{M}$ onto itself. Therefore, for any measurable set $A \subset \mathcal{M}$, by change of variables we have
+\begin{equation}
+\int_A p_X(x \mid c)\, dx
+=
+\int_{f(A; c)} p_Z(z)\, dz.
+\end{equation}
+Using the standard change-of-variables theorem, we obtain
+\begin{equation}
+\int_A p_X(x \mid c)\, dx
+=
+\int_A p_Z(f(x; c)) \, \left| \det \frac{\partial f(x; c)}{\partial x} \right| dx.
+\end{equation}
+Since this holds for all measurable sets $A$, it follows that
+\begin{equation}
+p_X(x \mid c) = p_Z(f(x; c)) \, \left| \det \frac{\partial f(x; c)}{\partial x} \right|.
+\end{equation}
+\hfill$\square$
+
+
+Taking the logarithm of the above expression yields
+\begin{equation}
+\log p_X(x \mid c)
+=
+\log p_Z(f(x; c)) + \log \left| \det \frac{\partial f(x; c)}{\partial x} \right|,
+\end{equation}
+which is exactly the quantity optimized in the conditional maximum likelihood objective
+\begin{equation}
+\mathcal{L} = -\frac{1}{N} \sum_{i=1}^N \log p_X(x_i \mid c_i).
+\end{equation}
+
+
+In summary, the proposed PC-NCSF framework provides a flexible and computationally efficient approach for modeling protein angular data directly on compact manifolds while capturing protein-specific conformational preferences through learned embeddings. By combining exact-likelihood normalizing flows with lightweight protein-level conditioning, the method enables the construction of distinct yet statistically coupled angular distributions for a large collection of proteins within a single unified model. In the following section, we instantiate this framework on two important classes of manifolds arising in structural biology, namely the torus and the sphere, and evaluate its performance on both real protein torsion-angle data and structure-derived spherical angle benchmarks.
+ 
+\section{Experiments}
+
+We evaluate the proposed PC-NCSF on protein angular data defined on two compact manifolds commonly arising in structural biology: the two-dimensional torus and the sphere. 
+The experiments are designed to assess (i) the benefit of protein-level conditioning via learned embeddings, and (ii) the ability of the model to capture complex angular distributions while respecting intrinsic manifold geometry.
+In the following, we first present experiments on toroidal backbone torsion-angle data, then evaluate the proposed framework on spherical angular datasets.
+
+
+\subsection{Protein Backbone Torsion Angles on the Torus}
+
+\paragraph{Torus Dataset.}
+Backbone torsion angles $(\phi, \psi)$ were extracted from a curated dataset of 494 proteins comprising 166,035 residues, assembled by \cite{Lovell2003}. These angles correspond to rotations about the N--C$_\alpha$ and C$_\alpha$--C bonds and naturally reside on the two-dimensional torus $\mathbb{T}^2$.
+
+The dataset was randomly split into 80\% training and 20\% validation subsets.
+
+\paragraph{Model and Training Setup.}
+All models are based on Neural Circular Spline Flows with $T=8$ invertible transformations. Each transformation is parameterized by a conditioning network consisting of three hidden layers of width 128 with standard nonlinear activations.
+
+Protein-level conditioning is implemented via a learnable embedding table. The embedding vector corresponding to each protein identifier is concatenated with the angular inputs and provided to the conditioner network. Unless otherwise stated, an embedding dimension of $d_{\mathrm{emb}} = 16$ is used.
+
+Models are trained end-to-end by maximum likelihood using the Adam optimizer with a learning rate of $2\times10^{-4}$ and a One-Cycle learning rate schedule. Training is performed for up to 40 epochs with early stopping (patience = 10) and a batch size of 128. Automatic mixed precision is used to accelerate training.
+
+
+\subsubsection{Batch Size Sensitivity}
+We first study the sensitivity of the unconditional baseline model to the batch size. Table~\ref{tab:batch_size} reports the minimum validation negative log-likelihood (NLL) and the corresponding epoch for different batch sizes.
+
+\begin{table}[t]
+\centering
+\caption{Sensitivity of the unconditional baseline model to batch size on \textsc{torus}  data.}
+\label{tab:batch_size}
+\begin{tabular}{ccc}
+\toprule
+Batch Size & Min. Validation NLL & Epoch at Minimum \\
+\midrule
+64  & 1.277 & 40 \\
+128 & 1.278 & 40 \\
+256 & 1.281 & 40 \\
+512 & 1.283 & 38 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Validation performance varies by less than 0.01 across all batch sizes, indicating robustness to this hyperparameter. However, smaller batch sizes substantially increase training time. Based on this trade-off, a batch size of 128 is used in all subsequent experiments.
+
+\subsubsection{Effect of Protein Embedding Dimension}
+Table~\ref{tab:embedding_dim} compares the unconditional baseline with conditional models using different embedding dimensions.
+
+\begin{table}[t]
+\centering
+\caption{Validation negative log-likelihood (NLL) of unconditional and protein-conditional models evaluated on \textsc{torus} data.}
+\label{tab:embedding_dim}
+\begin{tabular}{lcc}
+\toprule
+Model & Embedding Dimension & Min. Validation NLL \\
+\midrule
+Unconditional & -- & 1.281 \\
+Conditional & 4  & 1.232 \\
+Conditional & 16 & \textbf{1.216} \\
+Conditional & 32 & 1.228 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+All conditional models {\color{red} achieve lower aggregate validation NLL than} the unconditional baseline, demonstrating the benefit of protein-specific conditioning. The best performance is achieved with $d_{\mathrm{emb}} = 16$, which is therefore used in the remaining experiments unless stated otherwise.
+{\color{red}
+
+
+To statistically evaluate the improvement beyond the aggregate NLL comparison, we computed per-protein validation NLL for the unconditional and conditional ($d_{\mathrm{emb}}=16$) models and performed paired comparisons across the 493 proteins represented in both validation outputs. The conditional model achieved lower NLL for 283 of 493 proteins (57.4\%), with a mean paired
+improvement (unconditional minus conditional NLL) of 0.060 nats. The paired difference was statistically significant under both the Wilcoxon signed-rank test ($p = 5.3\times10^{-9}$) and the paired $t$-test ($p = 2.3\times10^{-12}$), with a small standardized paired effect (Cohen's $d = 0.32$). Thus, although the average per-protein improvement was modest in magnitude, it was consistently detectable across the paired protein-level comparison.
+}
+
+\begin{figure}[t]
+    \centering
+    \includegraphics[width=0.9\linewidth]{loss2.pdf}
+    \caption{Training and validation negative log-likelihood (NLL) curves on the \textsc{torus} data,
+comparing the proposed protein-conditional model (PC-NCSF) with the unconditional baseline. From approximately epoch 10 onward, the conditional model consistently achieves lower NLL values on both the training and validation sets, indicating improved density estimation and better generalization across protein-specific angular distributions.}
+    \label{fig:loss2}
+\end{figure}
+\clearpage
+
+\paragraph{Learning Dynamics.}
+Figure~\ref{fig:loss2} compares training and validation NLL curves for unconditional and conditional models on the \textsc{torus} data.
+
+{\color{red} After the initial training phase, the conditional model achieves lower
+validation NLL than the unconditional baseline.}  This gap is maintained during the subsequent training epochs, indicating
+improved fit on both the training and validation data.
+
+
+\paragraph{Qualitative Density Visualization.}
+Figure~\ref{fig:torus_contour} visualizes learned density contours on $\mathbb{T}^2$ for the unconditional baseline and several protein-conditional models. The `cond` number refers to the index of the protein within the dataset. As illustrative examples, we display the density estimates for several specific proteins (indices 0, 123, 246, 369, and 493) shown in the figure.
+
+While the unconditional model learns a single global distribution, conditional models adapt their densities in a protein-specific manner, capturing distinct conformational preferences across proteins. These qualitative differences are consistent with the observed improvements in validation likelihood.
+
+\begin{figure}[t]
+
+\centering
+
+\begin{tabular}{cc}
+
+\includegraphics[width=0.45\linewidth]{uncond_bs256_ep40_hd128.png} &
+\includegraphics[width=0.45\linewidth]{cond_bs256_ep40_ed8_hd128_cond0.png} \\
+
+\includegraphics[width=0.45\linewidth]{cond_bs256_ep40_ed8_hd128_cond123.png} &
+\includegraphics[width=0.45\linewidth]{cond_bs256_ep40_ed8_hd128_cond246.png} \\
+
+\includegraphics[width=0.45\linewidth]{cond_bs256_ep40_ed8_hd128_cond369.png} &
+\includegraphics[width=0.45\linewidth]{cond_bs256_ep40_ed8_hd128_cond493.png} \\
+
+\end{tabular}
+
+\caption{Contour plots of learned backbone torsion-angle densities on the \textsc{torus} data. The unconditional baseline (top-left) learns a single global density with diffuse probability mass, leading to higher approximation error. In contrast, protein-conditional models concentrate density more accurately in regions supported by observed data, producing sharper and better-aligned contours for individual proteins. This improved localization of probability mass is consistent with the lower negative log-likelihood achieved by the conditional model.}
+
+\label{fig:torus_contour}
+
+\end{figure}
+\clearpage
+
+
+\subsubsection{\textcolor{red}{Comparison with a Modern Flow-Matching Baseline}}
+
+\textcolor{red}{To situate PC-NCSF relative to more recent manifold generative
+modeling paradigms, we compare it with Protein-Conditional Riemannian Flow
+Matching (PC-RFM), a conditional continuous normalizing flow trained via flow
+matching on the flat torus~\cite{Chen2024}. To isolate the effect
+of the generative modeling framework, PC-RFM uses the same protein-identity
+conditioning mechanism and the same train/validation split as PC-NCSF.
+Table~\ref{tab:rfm_comparison} reports validation NLL for both models.
+Whereas PC-NCSF permits tractable likelihood evaluation through its invertible
+spline transformations, PC-RFM likelihoods are evaluated numerically using a
+fixed-step RK4 solver and the instantaneous change-of-variables
+formula~\cite{chen2018neural}.}
+
+\textcolor{red}{On a paired protein-level comparison across the 493 proteins
+represented in the validation outputs of both models, PC-NCSF achieved lower
+mean validation NLL for 443 proteins (89.9\%). The paired difference was
+significant under both the Wilcoxon signed-rank test
+($p = 3.8\times10^{-69}$) and the paired $t$-test
+($p = 1.1\times10^{-85}$), with a large standardized paired effect
+(Cohen's $d = 1.09$). Thus, under the matched experimental setting considered
+here, PC-NCSF achieved better likelihood-based density estimation than the
+PC-RFM baseline.}
+
+\begin{table}[h]
+\centering
+\caption{\textcolor{red}{Validation NLL of PC-NCSF and PC-RFM on the real
+torus dataset (494 proteins; 166{,}035 residues). Lower values indicate better
+density estimation.}}
+\label{tab:rfm_comparison}
+
+\color{red}
+\begin{tabular}{lcc}
+\toprule
+Model & Flat Validation NLL & Mean Per-Protein NLL \\
+\midrule
+PC-NCSF (embedding dim.\ 16) & 1.220 & 1.207 \\
+PC-RFM (embedding dim.\ 16)  & 1.395 & 1.378 \\
+\bottomrule
+\end{tabular}
+\color{black}
+
+\end{table}
+
+% =============================================================================
+\subsection{Simulation Study on Synthetic Toroidal Data}
+\label{sec:simulation}
+% =============================================================================
+To complement the real-data experiments and provide a controlled evaluation
+with known ground truth, we conduct a simulation study on two synthetic datasets
+of protein-like angular data defined on the two-dimensional torus
+$\mathbb{T}^2 = \mathbb{S}^1 \times \mathbb{S}^1$.
+Unlike real protein data, where the true density is unknown,
+these synthetic datasets allow direct evaluation of the recovery of
+per-protein densities and whether downstream clustering based on those
+densities recovers the known ground-truth group structure.
+
+{\color{red}
+The synthetic settings are designed to provide controlled, protein-relevant
+angular distributions with known generating densities and group structure,
+rather than to reproduce every aspect of the complexity of empirical protein
+torsion-angle distributions. In particular, the first simulation setting is
+motivated by the characteristic angular structure of consecutive
+$\mathrm{C}_\alpha$ atoms reported by \cite{Hamelryck2006}, as described in
+Section~3.2.1. The synthetic experiments therefore provide a controlled
+assessment of density recovery and density-based clustering, complementing
+rather than replacing the evaluations on real protein data in
+Sections~3.3 and~3.5.
+}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\subsubsection{Synthetic Datasets}
+\label{sec:sim_data}
+% ─────────────────────────────────────────────────────────────────────────────
+
+\paragraph{Dataset 1: Wrapped Normal Mixture Model.}
+The first dataset is motivated by the bimodal structure of the
+virtual bond and torsion angle distribution of consecutive $\mathrm{C}_\alpha$
+atoms reported by \cite{Hamelryck2006}, who identified a strong concentration
+of $(\theta, \tau)$ pairs around
+$(\theta^*_1, \tau^*_1) = (95^\circ, 50^\circ)$ for $\alpha$-helices
+and around
+$(\theta^*_2, \tau^*_2) = (120^\circ, -165^\circ)$ for $\beta$-strands.
+
+Each simulated protein $k$ is characterized by a mixture parameter
+$\delta_k \in [0,1]$ controlling the proportion of $\alpha$-helix-like
+versus $\beta$-strand-like residues.
+The joint distribution of $(\theta, \tau)$ for protein $k$ is
+\begin{equation}
+(\theta, \tau) \;\sim\;
+\delta_k \cdot \mathrm{WN}(\theta^*_1, \rho_\theta)
+            \times \mathrm{WN}(\tau^*_1, \rho_\tau)
+\;+\;
+(1-\delta_k) \cdot \mathrm{WN}(\theta^*_2, \rho_\theta)
+              \times \mathrm{WN}(\tau^*_2, \rho_\tau),
+\end{equation}
+where $\mathrm{WN}(\mu, \rho)$ denotes the Wrapped Normal distribution
+on the unit circle with mean direction $\mu$ and concentration
+parameter $\rho \in (0,1)$, sampled by drawing from
+$\mathcal{N}(\mu,\, {-2\log\rho})$ and wrapping to $[-\pi, \pi)$.
+Concentration parameters are fixed at $\rho_\theta = 0.99$ and
+$\rho_\tau = 0.975$.
+
+The 30 simulated proteins are divided into three groups of 10.
+Mixture parameters are drawn as follows:
+$\delta_k \sim \mathrm{Beta}(48,2)$ for $\alpha$-like proteins (mean $\approx 0.96$),
+$\delta_k \sim \mathrm{Beta}(2,48)$ for $\beta$-like proteins (mean $\approx 0.04$),
+and $\delta_k \sim \mathrm{Uniform}(0.2, 0.8)$ for mixed proteins.
+Each protein contains 200 angle pairs, split into 150 training and 50 validation observations.
+
+\paragraph{Dataset 2: Conditional Von Mises Model.}
+The second dataset is motivated by the standard Ramachandran plot,
+which places $\alpha$-helix, $\beta$-sheet, and loop residues in
+three clearly distinct and non-overlapping regions of $(\phi,\psi)$ space.
+Each protein is generated from a conditional Von Mises model:
+\begin{align}
+\phi &\;\sim\; \mathrm{VM}(\mu_\phi,\, \kappa), \\
+\psi \mid \phi &\;\sim\;
+\mathrm{VM}\!\left(\mu_\psi + \rho\cos(\phi-\mu_\phi)\cdot\tfrac{\pi}{6},\;
+                  \kappa(1+\tfrac{1}{2}|\rho|)\right),
+\end{align}
+which induces explicit within-protein correlation between $\phi$ and $\psi$.
+The three classes have centres $(\mu_\phi, \mu_\psi) =
+(-60^\circ, -45^\circ)$, $(-135^\circ, 135^\circ)$, and $(75^\circ, 15^\circ)$,
+concentrations $\kappa \in \{12.0, 10.0, 8.0\}$,
+and correlations $\rho \in \{0.7, -0.5, 0.3\}$.
+Individual protein parameters are perturbed around their class-level values
+to introduce realistic between-protein variability.
+The dataset contains 30 proteins with unequal group sizes (12, 8, and 10),
+and a variable number of residues per protein drawn from
+$\mathrm{Uniform}(100, 500)$.
+
+\paragraph{Geometric preprocessing.}
+Both angle channels are wrapped to $[-\pi, \pi)$ for both datasets
+before training, matching the periodicity domain of the NCSF transformations.
+A summary of both datasets is given in Table~\ref{tab:sim_summary}.
+
+\begin{table}[t]
+\centering
+\caption{Summary of synthetic simulation datasets.}
+\label{tab:sim_summary}
+\begin{tabularx}{\textwidth}{
+    l
+    >{\raggedright\arraybackslash}X
+    c
+    c
+    >{\centering\arraybackslash}X
+    >{\raggedright\arraybackslash}X
+}
+\toprule
+Dataset & Distribution & Groups & Proteins & Residues/protein & Separation \\
+\midrule
+Dataset 1 & Wrapped Normal mixture & 3 (equal) & 30 &
+200 (fixed) & Partial (mixed group) \\
+Dataset 2 & Conditional Von Mises & 3 (unequal) & 30 &
+100--500 (variable) & Complete \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\subsubsection{Density Estimation: Conditional vs.\ Unconditional}
+\label{sec:sim_nll}
+% ─────────────────────────────────────────────────────────────────────────────
+
+We train PC-NCSF and an unconditional NCSF baseline on both datasets
+using the same architecture (8 spline transforms, 3 hidden layers of width 128,
+embedding dimension 32) and optimization protocol (Adam, learning rate
+$2 \times 10^{-4}$, One-Cycle schedule, early stopping with patience 15).
+
+{\color{red}
+Table~\ref{tab:sim_nll} reports the mean per-protein validation
+negative log-likelihood for each model and dataset, disaggregated by group.
+PC-NCSF achieves lower NLL than the unconditional baseline for the
+$\alpha$-like and $\beta$-like groups in Dataset~1 and for all three groups
+in Dataset~2. For the mixed group in Dataset~1, however, the conditional
+model yields a slightly higher mean NLL (0.1591 vs.\ 0.1277), indicating
+that the benefit of protein-level conditioning is not uniform across all
+synthetic subgroups.
+}
+\begin{table}[t]
+\centering
+\caption{Mean per-protein validation NLL: PC-NCSF vs.\ unconditional baseline
+on synthetic datasets.
+Lower is better.}
+\label{tab:sim_nll}
+\begin{tabular}{llcc}
+\toprule
+Dataset & Group & Unconditional NLL & Conditional NLL \\
+\midrule
+\multirow{3}{*}{Dataset 1}
+& $\alpha$-like (10 proteins) & 0.0503
+& -0.3619\\
+& $\beta$-like (10 proteins) & 0.0712 & -0.3361 \\
+& Mixed (10 proteins) & 0.1277 & 0.1591 \\
+\midrule
+\multirow{3}{*}{Dataset 2}
+& $\alpha$-helix (12 proteins) & 1.2238
+& 0.3606 \\
+& $\beta$-sheet (8 proteins) & 1.9790 & 0.5389 \\
+& Loop (10 proteins) & 2.3167 & 0.9990 \\
+\bottomrule
+\end{tabular}
+\end{table}
+% ─────────────────────────────────────────────────────────────────────────────
+\subsubsection{Density-Based Clustering}
+\label{sec:sim_clustering}
+% ─────────────────────────────────────────────────────────────────────────────
+
+{\color{red}A key downstream application of per-protein density estimation is the
+comparison and clustering of proteins based on their learned conformational
+density functions. Rather than relying on sequence or structure alignment, we ask whether the
+learned density functions alone are sufficiently informative to recover the
+known group structure.}
+
+\paragraph{Clustering procedure.}
+For each pair of proteins $(k,l)$, we compute the Hellinger distance
+between their estimated densities $\hat{p}_k$ and $\hat{p}_l$:
+\begin{equation}
+H(\hat{p}_k,\hat{p}_l)
+=
+\sqrt{\frac{1}{2}
+\int_{-\pi}^{\pi}\!\int_{-\pi}^{\pi}
+\Bigl(\sqrt{\hat{p}_k(\theta,\tau)}
+-\sqrt{\hat{p}_l(\theta,\tau)}\Bigr)^2
+\,\mathrm{d}\theta\,\mathrm{d}\tau}.
+\end{equation}
+
+{\color{red}
+The Hellinger integral is numerically approximated on a uniform
+$100\times100$ grid over $[-\pi,\pi)^2$. Importantly, the grid is used only
+for numerical integration and not for estimating the underlying densities.
+At each grid point, $\hat{p}_k(\theta,\tau)$ is evaluated directly from the
+trained PC-NCSF model using its invertible change-of-variables formulation.
+Thus, the numerical approximation enters only through the evaluation of the
+Hellinger integral, while the pointwise density values are obtained directly
+from the fitted flow model.
+}
+
+Ward hierarchical clustering is applied to the resulting distance matrix,
+and the tree is cut at $k=3$ clusters.
+We evaluate clustering quality against known ground-truth group memberships
+using the Adjusted Rand Index (ARI)
+and Normalized Mutual Information (NMI).
+
+
+\paragraph{Results.}
+Table~\ref{tab:sim_clustering} reports clustering evaluation metrics for
+both datasets.
+To assess robustness to the choice of distance metric,
+we repeat the analysis using the $L^1$ total variation distance and
+the symmetrized Kullback--Leibler divergence.
+
+\begin{table}[t]
+\centering
+\caption{Clustering evaluation on synthetic datasets ($k=3$, Ward linkage).
+ARI and NMI range from 0 to 1; higher is better.
+All three metrics produce identical cluster assignments.}
+\label{tab:sim_clustering}
+\begin{tabular}{lcccc}
+\toprule
+Dataset & ARI & NMI
+  & $\alpha$-recovery & $\beta$-recovery \\
+\midrule
+Dataset 1 (Wrapped Normal) & 0.617 & 0.740
+  & 10/10 (100\%) & 10/10 (100\%) \\
+Dataset 2 (Von Mises)      & 1.000 & 1.000
+  & 12/12 (100\%) & 8/8 (100\%) \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+On Dataset 2, where the three classes occupy completely non-overlapping
+regions of the torus, all 30 proteins are assigned to the correct cluster
+regardless of the distance metric, yielding perfect ARI = 1.0.
+On Dataset 1, the $\alpha$-like and $\beta$-like groups are again perfectly
+recovered (10/10 each), while the 10 mixed proteins are distributed between
+the two pure clusters in a 5/5 split.
+{\color{red}
+This pattern is consistent with the generative design of Dataset~1: the mixed proteins have intermediate $\delta_k$ values and therefore
+overlap substantially with the two pure groups in density space. The resulting ARI of 0.617 is thus consistent with the greater distributional ambiguity intentionally introduced in this simulation setting.
+}
+
+A notable finding is that all three distance metrics — Hellinger, $L^1$,
+and symmetrized KL — produce identical cluster assignments on both datasets.
+This metric-robustness confirms that the cluster structure captured by
+the PC-NCSF density estimates is genuinely strong and not an artefact
+of the particular dissimilarity measure used.
+
+
+\subsection{SCOP-Based Spherical Angle Datasets}
+
+\paragraph{SCOP Dataset.}
+To evaluate performance on spherical manifolds under controlled structural similarity, we construct four datasets from the SCOP database, denoted \emph{Easy}, \emph{Moderate}, \emph{Hard}, and \emph{Challenging}. Each dataset contains residue-level angular representations embedded on the sphere and includes four structural categories.
+The tasks are ordered by increasing difficulty: while the number of categories is fixed, the number of unique protein domains and overall structural diversity decrease substantially from Easy to Challenging, resulting in increasingly concentrated and overlapping angular distributions. Dataset statistics are summarized in Table~\ref{tab:scop_summary}.
+
+\begin{table}[t]
+\centering
+\caption{Summary statistics of \textsc{SCOP} datasets.}
+\label{tab:scop_summary}
+\begin{tabular}{lccc}
+\toprule
+Task & Total Residues & Unique Proteins & Categories \\
+\midrule
+Easy        & 732,092 & 1,590 & 4 \\
+Moderate    & 604,946 & 1,594 & 4 \\
+Hard        & 256,548 &   371 & 4 \\
+Challenging & 112,599 &   194 & 4 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{Model and Training Setup.}
+All models use the same architecture and training protocol across all four tasks to ensure fair comparison. The embedding dimension is fixed to $d_{\mathrm{emb}} = 8$, the batch size is set to 512, and models are trained for 20 epochs using the Adam optimizer. Each dataset is split into 80\% training and 20\% validation subsets.
+
+\paragraph{Quantitative Results.}
+{\color{red}
+Figure~\ref{fig:scop_loss_curves} shows validation NLL curves for the unconditional
+and conditional models across the four SCOP tasks. In all four tasks, the
+conditional model achieves lower validation NLL than the unconditional
+baseline, demonstrating a consistent benefit of protein-level conditioning
+across the evaluated SCOP difficulty levels.}
+\begin{figure}[t]
+
+\centering
+
+\begin{tabular}{cc}
+
+\begin{minipage}{0.45\linewidth}
+\centering
+\includegraphics[width=\linewidth]{loss_easy.pdf}
+\subcaption*{(a) Easy}
+\end{minipage}
+&
+\begin{minipage}{0.45\linewidth}
+\centering
+\includegraphics[width=\linewidth]{loss_moderate.pdf}
+\subcaption*{(b) Moderate}
+\end{minipage}
+\\
+
+\begin{minipage}{0.45\linewidth}
+\centering
+\includegraphics[width=\linewidth]{loss_hard.pdf}
+\subcaption*{(c) Hard}
+\end{minipage}
+&
+\begin{minipage}{0.45\linewidth}
+\centering
+\includegraphics[width=\linewidth]{loss_challenging.pdf}
+\subcaption*{(d) Challenging}
+\end{minipage}
+
+\end{tabular}
+
+\caption{Training and validation negative log-likelihood (NLL) curves across
+SCOP tasks of increasing difficulty, comparing the protein-conditional model
+with the unconditional baseline.\textcolor{red}{The conditional model achieves lower training and validation
+NLL across all four evaluated tasks.}}
+\label{fig:scop_loss_curves}
+
+\end{figure}
+\clearpage
+\subsection{Qualitative Density Visualization on SCOP Datasets}
+For each SCOP difficulty level, we visualize learned angular densities using contour plots for one unconditional model and three representative protein-conditional models (Figures~\ref{fig:scope_easy}--\ref{fig:scope_challenging}). This layout enables direct comparison between global and protein-specific density estimates under increasing structural similarity.
+Across all difficulty levels, protein-conditional models produce sharper and more structured density contours that adapt to individual proteins. Even in the Hard and Challenging regimes, conditional models preserve multimodal structure and accurately localize high-density regions corresponding to protein-specific angular preferences. These qualitative observations are consistent with the quantitative NLL improvements and demonstrate that protein embeddings effectively encode conformational context.
+\begin{figure}[t] 
+\centering \begin{minipage}{0.48\linewidth} 
+\centering \includegraphics[width=\linewidth]{easy_uncond_bs512_ep20_hd128.png} \subcaption*{(a) Unconditional} \end{minipage} \hfill \begin{minipage}{0.48\linewidth} \centering \includegraphics[width=\linewidth]{eaasy_cond_bs512_ep20_ed8_hd128_cond1191.png} \subcaption*{(b) Conditional (Protein 1)} \end{minipage} \vspace{0.3cm} \begin{minipage}{0.48\linewidth} \centering \includegraphics[width=\linewidth]{easy_cond_bs512_ep20_ed8_hd128_cond397.png} \subcaption*{(c) Conditional (Protein 2)} \end{minipage} \hfill \begin{minipage}{0.48\linewidth} \centering \includegraphics[width=\linewidth]{easy_cond_bs512_ep20_ed8_hd128_cond1589.png} \subcaption*{(d) Conditional (Protein 3)}
+ \end{minipage}
+ \caption{Contour plots of learned torsion-angle densities on the \textsc{SCOP} \textit{Easy} dataset. The unconditional model produces a broad global density that assigns probability mass to regions with limited data support, resulting in higher modeling error. Protein-conditional models yield sharper and more accurate contours, with increased density concentrated around regions where observations are present, reflecting improved fit and reduced error under low structural similarity. } \label{fig:scope_easy} 
+\end{figure}
+\clearpage
+\begin{figure}[t]
+    \centering
+    \begin{minipage}{0.48\linewidth}
+        \centering
+        \includegraphics[width=\linewidth]{moderate_uncond_bs512_ep20_hd128.png}
+        \subcaption*{(a) Unconditional}
+    \end{minipage}
+    \hfill
+    \begin{minipage}{0.48\linewidth}
+        \centering
+        \includegraphics[width=\linewidth]{modearte_cond_bs512_ep20_ed8_hd128_cond796.png}
+        \subcaption*{(b) Conditional (Protein 1)}
+    \end{minipage}
+
+    \vspace{0.3cm}
+
+    \begin{minipage}{0.48\linewidth}
+        \centering
+        \includegraphics[width=\linewidth]{moderate_cond_bs512_ep20_ed8_hd128_cond398.png}
+        \subcaption*{(c) Conditional (Protein 2)}
+    \end{minipage}
+    \hfill
+    \begin{minipage}{0.48\linewidth}
+        \centering
+        \includegraphics[width=\linewidth]{moderate_cond_bs512_ep20_ed8_hd128_cond1194.png}
+        \subcaption*{(d) Conditional (Protein 3)}
+    \end{minipage}
+
+    \caption{Contour plots of learned torsion-angle densities on the \textsc{SCOP} \textit{Moderate} dataset.
+Compared to the unconditional baseline, protein-conditional models better align probability mass with observed data,
+producing more precise and structured density contours.
+This improved concentration of density reduces approximation error while preserving multimodal conformational structure.}
+    \label{fig:scope_moderate}
+\end{figure}
+\clearpage
+\begin{figure}[t]
+    \centering
+    \begin{minipage}{0.48\linewidth}
+        \centering
+        \includegraphics[width=\linewidth]{hard_uncond_bs512_ep20_hd128.png}
+        \subcaption*{(a) Unconditional}
+    \end{minipage}
+    \hfill
+    \begin{minipage}{0.48\linewidth}
+        \centering
+        \includegraphics[width=\linewidth]{hard_cond_bs512_ep20_ed8_hd128_cond277.png}
+        \subcaption*{(b) Conditional (Protein 1)}
+    \end{minipage}
+
+    \vspace{0.3cm}
+
+    \begin{minipage}{0.48\linewidth}
+        \centering
+        \includegraphics[width=\linewidth]{hard_cond_bs512_ep20_ed8_hd128_cond92.png}
+        \subcaption*{(c) Conditional (Protein 2)}
+    \end{minipage}
+    \hfill
+    \begin{minipage}{0.48\linewidth}
+        \centering
+        \includegraphics[width=\linewidth]{hard_cond_bs512_ep20_ed8_hd128_cond0.png}
+        \subcaption*{(d) Conditional (Protein 3)}
+    \end{minipage}
+
+    \caption{Contour plots of learned torsion-angle densities on the \textsc{SCOP} \textit{Hard} dataset.
+As structural similarity increases, the unconditional model exhibits oversmoothing and elevated error by spreading probability mass across unsupported regions.
+In contrast, protein-conditional models maintain localized high-density regions aligned with observed angles,
+resulting in more accurate density estimation despite increased overlap between proteins.
+}
+    \label{fig:scope_hard}
+\end{figure}
+\clearpage
+\begin{figure}[t]
+    \centering
+    \begin{minipage}{0.48\linewidth}
+        \centering
+        \includegraphics[width=\linewidth]{challenging_uncond_bs512_ep20_hd128.png}
+        \subcaption*{(a) Unconditional}
+    \end{minipage}
+    \hfill
+    \begin{minipage}{0.48\linewidth}
+        \centering
+        \includegraphics[width=\linewidth]{challenging_cond_bs512_ep20_ed8_hd128_cond96.png}
+        \subcaption*{(b) Conditional (Protein 1)}
+    \end{minipage}
+
+    \vspace{0.3cm}
+
+    \begin{minipage}{0.48\linewidth}
+        \centering
+        \includegraphics[width=\linewidth]{challenging_cond_bs512_ep20_ed8_hd128_cond48.png}
+        \subcaption*{(c) Conditional (Protein 2)}
+    \end{minipage}
+    \hfill
+    \begin{minipage}{0.48\linewidth}
+        \centering
+        \includegraphics[width=\linewidth]{challenging_cond_bs512_ep20_ed8_hd128_cond0.png}
+        \subcaption*{(d) Conditional (Protein 3)}
+    \end{minipage}
+
+    \caption{Contour plots of learned torsion-angle densities on the \textsc{SCOP} \textit{Challenging} dataset.
+Under highly concentrated and overlapping angular distributions,
+the unconditional model collapses toward an imprecise global density with higher error.
+The protein-conditional model continues to assign higher probability density to data-supported regions,
+yielding sharper contours and more accurate likelihood estimation for individual proteins.}
+    \label{fig:scope_challenging}
+\end{figure}
+\clearpage
+
+
+\subsection{\textcolor{red}{Real-Data Clustering Validation on SCOP}}
+\label{sec:scop_clustering}
+
+\textcolor{red}{To assess whether the improved held-out likelihood of PC-NCSF
+on the real SCOP datasets (Section~3.3) translates into downstream structural
+clustering, we applied the same Hellinger-distance and Ward-linkage pipeline
+used in the synthetic study (Section~3.2.3) to the trained PC-NCSF models for
+each SCOP tier. Unlike the controlled synthetic setting, clustering performance
+on the real data was weak (Table~\ref{tab:scop_clustering}), and the overall
+pattern was robust to the choice of linkage method, with average and complete
+linkage yielding comparably low performance.}
+
+\textcolor{red}{These results indicate that improved protein-specific density
+estimation, as reflected by held-out NLL, does not by itself imply that
+differences among the estimated density functions align with SCOP structural
+class, fold, superfamily, or family boundaries. Accordingly, we regard density
+estimation as the primary contribution of the present work and density-based
+clustering as an exploratory downstream application. Developing representations
+that better connect conformational density with higher-level structural
+classification remains an important direction for future work.}
+
+\begin{table}[h]
+\centering
+\caption{\textcolor{red}{Density-based clustering performance of PC-NCSF on
+the real SCOP datasets using Ward linkage.}}
+\label{tab:scop_clustering}
+
+\color{red}
+\begin{tabular}{lcc}
+\toprule
+Tier  & ARI & NMI \\
+\midrule
+Easy         & 0.001 & 0.009 \\
+Moderate   & 0.062 & 0.125 \\
+Hard       & 0.076 & 0.098 \\
+Challenging  & 0.097 & 0.182 \\
+\bottomrule
+\end{tabular}
+\color{black}
+
+\end{table}
+
+\section{Conclusion}
+
+In this work, we proposed PC-NCSF, a protein-conditional normalizing flow framework for probabilistic modeling of angular protein data directly on compact manifolds. By constructing expressive, invertible transformations on the circle, torus, and sphere, the method respects the intrinsic geometry of angular representations and enables exact likelihood-based density estimation without resorting to Euclidean embeddings or ad hoc coordinate unwrapping.
+
+Protein-specific conditioning is achieved through a lightweight embedding mechanism that allows a single unified model to represent a large collection of distinct yet statistically related conformational distributions. This design provides an effective trade-off between flexibility and parameter sharing, enabling the model to capture both global structural regularities and protein-dependent conformational preferences.
+
+Empirical evaluations on backbone torsion-angle data defined on the torus and on SCOP-derived spherical angle datasets demonstrate that the proposed conditional formulation consistently improves over unconditional baselines. {\color{red} These results support the benefit of protein-level conditioning across the evaluated toroidal and spherical angular datasets.} Controlled simulation experiments on synthetic toroidal data further validate the proposed framework. {\color{red}
+Across the synthetic experiments, PC-NCSF generally achieves lower NLL
+than the unconditional baseline, although the mixed group in Dataset~1
+constitutes a modest exception.} Moreover, the estimated per-protein density maps support a downstream density-based clustering pipeline. Using pairwise Hellinger distances between estimated densities as a dissimilarity measure and Ward's hierarchical clustering, the proposed approach perfectly recovers all three biological classes (ARI $= 1.0$) in the well-separated scenario and achieves an ARI of $0.617$ in the partially overlapping scenario. In the latter case, {\color{red}The lower clustering performance in the partially overlapping scenario is consistent with the greater distributional ambiguity intentionally introduced
+in that simulation setting.}
+
+{\color{red}
+\textbf{Limitations.} As currently formulated, PC-NCSF does not generalize to proteins absent from
+the training set because conditioning relies on a learned protein-identity
+lookup embedding rather than a sequence- or structure-derived representation.
+Its intended use is therefore the estimation and comparison of conformational
+distributions for proteins represented during model training. Extending the
+conditioning mechanism to sequence- or structure-based encoders is an
+important direction for enabling generalization to previously unseen proteins.
+The datasets analyzed here, while covering both toroidal and spherical
+geometries and ranging from 194 to 1,594 unique proteins per SCOP tier,
+remain modest relative to contemporary large-scale structural databases.
+Although the synthetic experiments use protein-relevant angular distributions
+and provide controlled ground truth for evaluating density recovery and
+clustering, no simulation design can capture the full heterogeneity and
+multimodal complexity of empirical protein torsion-angle distributions.
+}
+
+Overall, PC-NCSF establishes a flexible and principled framework for exact-likelihood modeling of protein angular geometry on manifolds. Beyond the applications considered here, the proposed approach provides a general foundation for probabilistic modeling of manifold-valued data in structural bioinformatics and related domains. Future work will focus on extending the conditioning mechanism to sequence- and structure-based encoders to enable generalization to previously unseen proteins and to integrate the model more tightly with modern protein representation learning pipelines.
+
+
+\section{CRediT authorship contribution statement}
+
+Conceptualization, Supervision: Mohammad~Taghi~Shakeri and Morteza~Najibi.
+Data curation, Software, Writing -- original draft: Nooshin~Akbari~Sharak.
+Software, Writing -- review \& editing: Mahmood~Amintoosi.
+
+\section{Declaration of competing interest}
+
+The authors declare that they have no known competing financial interests or personal relationships that could have appeared to influence the work reported in this paper.
+
+\bibliographystyle{elsarticle_harv_doi}
+\bibliography{references_final}
+
+
+\end{document}

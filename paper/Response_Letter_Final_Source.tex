@@ -1,0 +1,942 @@
+\documentclass[a4paper,11pt]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{amsmath,amssymb}
+\usepackage{geometry}
+\geometry{margin=2.2cm}
+
+\usepackage{xcolor}
+\usepackage{tcolorbox}
+\tcbuselibrary{skins,breakable}
+
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage{tikz}
+\usepackage{eso-pic}
+
+\usepackage[
+    colorlinks,
+    citecolor=blue,
+    urlcolor=blue,
+    linkcolor=blue
+]{hyperref}
+
+
+% ============================================================
+% PAGE FRAME
+% ============================================================
+
+\AddToShipoutPictureBG{%
+  \begin{tikzpicture}[remember picture,overlay]
+    \draw[
+        black!55,
+        line width=0.7pt,
+        rounded corners=2mm
+    ]
+      ([xshift=0.75cm,yshift=0.75cm]current page.south west)
+      rectangle
+      ([xshift=-0.75cm,yshift=-0.75cm]current page.north east);
+  \end{tikzpicture}%
+}
+
+
+% ============================================================
+% REVIEWER / EDITOR COMMENT BOX
+% ============================================================
+
+\newtcolorbox{reviewerscomment}{
+    colback=blue!5,
+    colframe=blue!30!yellow,
+    arc=3mm,
+    left=5mm,
+    right=5mm,
+    top=3mm,
+    bottom=3mm,
+    fonttitle=\bfseries,
+    title=Reviewer Comment,
+    breakable
+}
+
+
+% ============================================================
+% RESPONSE BOX
+% ============================================================
+
+\newtcolorbox{myresponse}{
+    colback=green!5,
+    colframe=green!70!black,
+    arc=3mm,
+    left=5mm,
+    right=5mm,
+    top=3mm,
+    bottom=3mm,
+    fonttitle=\bfseries,
+    title=Response,
+    breakable
+}
+
+
+% ============================================================
+% COMMANDS
+% ============================================================
+
+% Comment number is supplied manually.
+% This prevents global numbering across editors/reviewers.
+\newcommand{\reviewercomment}[2]{%
+    \begin{reviewerscomment}
+        \textbf{Comment #1:} #2
+    \end{reviewerscomment}
+}
+
+\newcommand{\response}[1]{%
+    \begin{myresponse}
+        #1
+    \end{myresponse}
+    \vspace{5mm}
+}
+
+
+% Unnumbered section that still appears in the Contents
+\newcommand{\responsesection}[1]{%
+    \section*{#1}
+    \addcontentsline{toc}{section}{#1}
+}
+
+
+% ============================================================
+% DOCUMENT
+% ============================================================
+
+\begin{document}
+
+\title{
+    Point-by-Point Response to Reviewers\\
+    \large Protein-Conditional Normalizing Flows on Manifolds for Backbone Torsion Angle Modeling\\
+    \normalsize Machine Learning with Applications
+}
+
+\author{Nooshin Akbari Sharak et al.}
+
+\date{\today}
+
+\maketitle
+
+\tableofcontents
+
+
+% ============================================================
+% GENERAL RESPONSE
+% ============================================================
+
+\responsesection{General Response}
+
+We sincerely thank the Editor-in-Chief, Associate Editor, and Reviewers for their
+careful evaluation of our manuscript and for the constructive comments that
+helped us improve both its scientific positioning and empirical evaluation. In
+the revised manuscript, we have clarified the scope and novelty of the
+protein-conditional formulation, explicitly distinguished our contribution from
+the underlying manifold-flow constructions of Rezende et al. (2020), and made
+the limitation of identity-based protein embeddings for unseen proteins clear
+in the Abstract, Introduction, Method, and Conclusion. We have also strengthened
+the empirical evaluation by adding a protein-conditional Riemannian
+flow-matching baseline, paired protein-level statistical comparisons, and
+real-data density-based clustering analyses on the SCOP datasets. In addition,
+we clarified the role of the synthetic experiments, the numerical use of the
+grid in the Hellinger-distance calculation, and the reproducibility materials.
+All substantive revisions are indicated in colored text in the revised
+manuscript. Below, we reproduce the editorial and reviewer comments and provide
+our point-by-point responses together with the corresponding locations in the
+revised manuscript.
+
+
+% ============================================================
+% SECTION 1-a
+% ============================================================
+
+\responsesection{Section 1-a: Complete Comments from the Editor-in-Chief}
+
+
+\reviewercomment{1}{
+I am writing to inform you of the editorial decision regarding your paper
+submission MLWA-D-26-00991. to MLWA: Major Revision. If you wish to
+submit a revised version of your manuscript, please read this entire editorial
+decision letter carefully and address all requirements thoroughly to avoid delays
+in the review process.
+
+Your revised submission must include a ``Detailed Response to Reviewers''
+document containing the six required sections listed below. Each section must be
+clearly labeled and presented in the exact order specified. In addition, please
+upload the complete revision package---including the revised manuscript and all
+supporting files---through the EM system.
+
+Failure to include any required section or to comply fully with these instructions
+may result in rejection of the revised submission.
+
+The six required sections must appear in the following order:
+
+\begin{itemize}
+    \item Section 1-a: The two complete comments from the Editor-in-Chief
+    \item Section 1-b: The authors' point-by-point responses to the Editor-in-Chief
+    \item Section 2-a: The two complete comments from the Associate Editor
+    \item Section 2-b: The authors' point-by-point responses to the Associate Editor
+    \item Section 3-a: The complete comments from the Reviewers
+    \item Section 3-b: The authors' point-by-point responses to the Reviewers
+    (organized by individual reviewer)
+\end{itemize}
+
+As a verification step, please answer the following question in your response
+document:
+
+Does your revised submission fully comply with the required structure outlined
+above? Yes $\square$\quad No $\square$
+
+Please also note that a Major Revision decision does not constitute a guarantee
+of eventual acceptance, nor does it preclude the possibility of rejection in a
+subsequent review round. This decision reflects the reviewers' assessment that
+the manuscript has potential but requires significant improvement before further
+consideration. Each resubmission will be evaluated independently based on its own
+merits, and neither the reviewers nor the journal are bound to a favorable outcome
+upon revision.
+
+You are not required to incorporate all references suggested by the reviewers.
+If you identify any inappropriate or excessive citation requests, please feel
+free to contact me directly.
+}
+
+
+\reviewercomment{2}{
+Please confirm (Yes $\square$ No $\square$) that your submission complies with
+the following five requirements:
+
+\begin{itemize}
+
+    \item \textbf{Author Information:}
+    The EM system and the title page embedded in the full manuscript PDF must
+    contain each author's full name, complete institutional affiliation
+    (including country), and valid institutional email address. The title page
+    should not be submitted separately. All information must be accurate and
+    consistent.
+
+    \item \textbf{Institutional Emails:}
+    Personal email addresses (e.g., Gmail, Yahoo, Hotmail, or Outlook) are not
+    acceptable. The corresponding author is responsible for ensuring complete
+    and accurate author information.
+
+    \item \textbf{Authorship:}
+    Any authorship changes must be fully justified in the point-by-point response
+    and supported by written consent from all authors, including those added or
+    removed. Unjustified changes may result in rejection.
+
+    \item \textbf{References:}
+    The manuscript must follow the MLWA reference style, based on APA referencing
+    style as specified on the MLWA homepage.
+
+    \item \textbf{Manuscript Format:}
+    The manuscript must comply with the MLWA Guidelines on Manuscript Format,
+    including the required single-column layout.
+
+\end{itemize}
+
+To submit you're a complete and compliant revised manuscript, please log in as
+an author at \url{https://www.editorialmanager.com/mlwa/}, and navigate to the
+``Submissions Needing Revision'' folder.
+
+To submit you're a complete and compliant revised manuscript, please log in as
+an author at \url{https://www.editorialmanager.com/mlwa/}, and navigate to the
+``Submissions Needing Revision'' folder.
+}
+
+
+% ============================================================
+% SECTION 1-b
+% ============================================================
+
+\responsesection{Section 1-b: Authors' Point-by-Point Responses to the Editor-in-Chief}
+
+
+\response{
+\textbf{Response to Comment 1.}
+
+We thank the Editor-in-Chief for clearly specifying the requirements for the
+revised submission. We have followed the required structure for the
+``Detailed Response to Reviewers'' document and organized it in the exact
+sequence requested: Section 1-a contains the two complete comments from the
+Editor-in-Chief; Section 1-b contains our point-by-point responses to the
+Editor-in-Chief; Section 2-a contains the two complete comments from the
+Associate Editor; Section 2-b contains our point-by-point responses to the
+Associate Editor; Section 3-a contains the complete comments from the Reviewers;
+and Section 3-b contains our point-by-point responses organized separately by
+reviewer.
+
+We have also revised the manuscript in response to the editorial and reviewer
+comments and will submit the complete revision package, including the revised
+manuscript and supporting files, through the Editorial Manager system.
+
+\textbf{Verification:}
+Does your revised submission fully comply with the required structure outlined
+above?
+\textbf{Yes $\boxtimes$\quad No $\square$}
+}
+
+
+\response{
+\textbf{Response to Comment 2.}
+\textbf{Yes $\boxtimes$\quad No $\square$}
+
+We confirm that the revised submission complies with the five requirements
+specified by the Editor-in-Chief. The full names, complete institutional
+affiliations including country, and valid institutional e-mail addresses of all
+authors have been carefully verified for consistency between the manuscript and
+the Editorial Manager system. All authors use institutional e-mail addresses.
+
+No changes have been made to the authorship of the manuscript. Specifically,
+the number of authors, author order, and institutional affiliations remain
+unchanged from the original submission; therefore, no authorship-change
+justification or consent documentation is required.
+
+The manuscript is prepared in the required single-column format. The reference
+list has been carefully checked and formatted to conform to the MLWA APA-based
+reference style, including alphabetical organization and verification of
+bibliographic information and DOI information where available.
+
+\textbf{Location:}
+Title page and author information; reference list; manuscript-wide formatting.
+}
+
+
+% ============================================================
+% SECTION 2-a
+% ============================================================
+
+\responsesection{Section 2-a: Complete Comments from the Associate Editor}
+
+
+\reviewercomment{1}{
+Thank you for submitting your manuscript to MLWA. Following a careful review,
+the reviewers have identified several substantive issues that must be adequately
+addressed before the manuscript can be considered further. Please revise the
+manuscript thoroughly and provide a clear, point-by-point response to each
+reviewer comment. All revisions should be clearly indicated using colored text
+in the manuscript. Kindly ensure that the track changes function is turned off
+prior to submission.
+}
+
+
+\reviewercomment{2}{
+Please confirm (Yes $\square$ No $\square$) whether Section \#1-a of your
+revised submission includes the complete and unaltered text of two comments
+from the Editor-in-Chief. Please note that the complete and verbatim inclusion
+of the Editor-in-Chief's comments is a mandatory journal requirement. Any
+omission or modification of these comments is considered a breach of editorial
+ethics and is not acceptable.
+}
+
+
+% ============================================================
+% SECTION 2-b
+% ============================================================
+
+\responsesection{Section 2-b: Authors' Point-by-Point Responses to the Associate Editor}
+
+
+\response{
+\textbf{Response to Comment 1.}
+
+We thank the Associate Editor for the careful assessment of our manuscript and
+for emphasizing the importance of a thorough revision. We have carefully
+considered all comments raised by the reviewers and have undertaken a substantial
+revision of the manuscript accordingly.
+
+In particular, we have prepared detailed, point-by-point responses to each
+reviewer comment in Section 3-b of this document. The corresponding changes in
+the revised manuscript are clearly indicated using colored text so that they can
+be readily identified by the Editor and Reviewers. The final revised manuscript
+will be submitted with the track-changes function turned off, as requested.
+
+The substantive scientific issues raised by the reviewers, including the scope
+and novelty of the protein-conditional formulation, its limitation with respect
+to unseen proteins, comparison with a modern generative-modeling baseline,
+statistical assessment of model performance, real-data clustering validation,
+and reproducibility, are addressed individually in the responses to the
+reviewers and through corresponding revisions to the manuscript.
+
+\textbf{Location:}
+The revisions are indicated in colored text throughout the revised manuscript,
+and detailed locations of individual changes are reported under the corresponding
+responses in Section 3-b.
+}
+
+
+\response{
+\textbf{Response to Comment 2.}
+\textbf{Yes $\boxtimes$\quad No $\square$}
+
+We confirm that Section 1-a of this response document includes the complete and
+unaltered text of both comments from the Editor-in-Chief. The comments have been
+reproduced verbatim from the editorial decision letter, without omission,
+summarization, paraphrasing, or substantive modification.
+
+We have retained the complete wording of the Editor-in-Chief's comments,
+including the submission instructions and compliance requirements, to ensure
+full adherence to the journal's mandatory response-document structure.
+
+\textbf{Location:}
+Section 1-a, ``Complete Comments from the Editor-in-Chief,'' Comments 1 and 2.
+}
+
+% ============================================================
+% SECTION 3-a
+% ============================================================
+
+\responsesection{Section 3-a: Complete Comments from the Reviewers}
+
+\subsection*{Reviewer 1}
+
+\reviewercomment{1}{
+The core idea regarding conditioning normalizing flows on learned embeddings
+is conceptually straightforward. The heavy theoretical lifting (manifold flows
+on circles, tori, spheres) is largely borrowed from Rezende et al. [2020].
+The protein-conditional extension is useful but incremental.
+}
+
+\reviewercomment{2}{
+The embedding-based conditioning mechanism (a simple lookup table) is
+lightweight to the point of being limiting. The authors explicitly acknowledge
+this cannot generalize to unseen proteins---a major practical constraint that
+undermines real-world applicability.
+}
+
+\reviewercomment{3}{
+In order to strengthen the empirical foundations, the authors should:
+
+1. Addition of at least one modern baseline (e.g., flow matching or
+score-based manifold model).
+}
+
+\reviewercomment{4}{
+In order to strengthen the empirical foundations, the authors should:
+
+2. Explicit discussion of the zero-shot limitation in the
+abstract/conclusion, not just Section 2.5.
+}
+
+\reviewercomment{5}{
+In order to strengthen the empirical foundations, the authors should:
+
+3. Real-data clustering validation on SCOP datasets (currently only synthetic).
+}
+
+\reviewercomment{6}{
+Considering the scale between 1,591 proteins and $\sim$732K residues
+(SCOP Easy) is modest by contemporary standards. AlphaFold2-era structural
+biology operates at hundreds of millions of structures.
+
+This work is unlikely to shift practice in protein structure modeling. It
+serves more as a principled statistical foundation than a tool practitioners
+will immediately adopt.
+}
+
+\subsection*{Reviewer 2}
+
+\reviewercomment{1}{
+The manuscript presents a technically sound extension of neural circular
+spline flows to protein-conditional settings. Still, its novelty is severely
+limited because it directly adopts the core manifold flow architecture from
+Rezende et al. (2020) with only minor modifications (learned protein
+embeddings).
+}
+
+\reviewercomment{2}{
+The GitHub repository link is non-functional (CFFF), raising reproducibility
+concerns.
+}
+
+\reviewercomment{3}{
+The conditioning mechanism via protein embeddings fails to generalise to
+unseen proteins, contradicting the claimed promise of "protein-specific"
+modelling.
+}
+
+\reviewercomment{4}{
+Additionally, the synthetic experiments use overly simplistic distributions
+(wrapped normal mixtures, conditional von Mises) that poorly represent the
+complex multimodal nature of real protein torsion angles.
+}
+
+\reviewercomment{5}{
+At the same time, the real-data improvements (NLL differences of 0.05-0.1)
+are modest and not statistically validated.
+}
+
+\reviewercomment{6}{
+The clustering application, while interesting, uses density estimates on
+fixed grids rather than the exact likelihood formulation the paper claims
+as its advantage.
+}
+
+% ============================================================
+% SECTION 3-b
+% ============================================================
+
+\responsesection{Section 3-b: Authors' Point-by-Point Responses to the Reviewers}
+
+% ============================================================
+% REVIEWER 1
+% ============================================================
+
+\subsection*{Reviewer 1}
+\addcontentsline{toc}{subsection}{Reviewer 1}
+
+
+% ------------------------------------------------------------
+% Reviewer 1 - Comment 1
+% ------------------------------------------------------------
+
+\reviewercomment{1}{
+The core idea regarding conditioning normalizing flows on learned embeddings
+is conceptually straightforward. The heavy theoretical lifting (manifold flows
+on circles, tori, spheres) is largely borrowed from Rezende et al. [2020].
+The protein-conditional extension is useful but incremental.
+}
+
+\response{
+We thank the Reviewer for this assessment and agree that the underlying
+manifold normalizing-flow machinery is not a novel contribution of the present
+work. Specifically, the circular spline transformations on $\mathbb{S}^{1}$,
+their extension to product manifolds such as $\mathbb{T}^{D}$, and the
+sphere--cylinder construction on $\mathbb{S}^{D}$ build on the manifold-flow
+framework of Rezende et al.~(2020). We have revised the manuscript to make this
+boundary of novelty explicit and to avoid implying that the underlying
+geometric construction itself is introduced here.
+
+The methodological contribution of the present study is instead the
+\emph{protein-conditional} formulation built on this framework, in which
+learnable protein-specific embeddings are jointly optimized with the flow
+parameters. This allows a single shared manifold-aware model to represent
+distinct protein-specific torsion-angle distributions while retaining
+tractable likelihood evaluation.
+
+We have also strengthened the empirical positioning of this contribution.
+In response to the Reviewer's recommendation, we added a direct comparison
+with a modern protein-conditional Riemannian flow-matching baseline under a
+matched experimental protocol. This additional experiment allows the revised
+manuscript to position PC-NCSF empirically relative to a more recent
+continuous-time manifold generative-modeling paradigm rather than relying
+solely on comparisons with the unconditional NCSF baseline.
+
+\textbf{Location:} Introduction, immediately following the list of main
+contributions; Section~3.1.3, ``Comparison with a Modern Flow-Matching
+Baseline,'' and Table~3.
+}
+
+
+% ------------------------------------------------------------
+% Reviewer 1 - Comment 2
+% ------------------------------------------------------------
+
+\reviewercomment{2}{
+The embedding-based conditioning mechanism (a simple lookup table) is
+lightweight to the point of being limiting. The authors explicitly acknowledge
+this cannot generalize to unseen proteins---a major practical constraint that
+undermines real-world applicability.
+}
+
+\response{
+We agree with the Reviewer that the current protein-identity embedding imposes
+an important zero-shot limitation. Because the conditioning representation is
+a learned lookup embedding associated with proteins observed during training,
+the present model cannot directly generate a protein-specific density for a
+previously unseen protein without additional fitting. We therefore agree that
+this limitation should not be confined to the methodological description.
+
+In the revised manuscript, we have made this limitation explicit in both the
+Abstract and the Conclusion and have moderated the discussion of practical
+generalizability accordingly. We now distinguish more clearly between
+protein-specific density estimation for proteins represented during model
+training and zero-shot prediction for unseen proteins, which is not supported
+by the current architecture.
+
+We also identify replacing the identity-based lookup embedding with a
+conditioning representation derived from transferable protein information,
+such as sequence- or structure-derived features, as an important direction for
+future work.
+
+\textbf{Location:} Abstract; Section~2.5, ``Conditional Modeling via Learned
+Protein Embeddings''; and Section~4, ``Conclusion'' (Limitations).
+}
+
+
+% ------------------------------------------------------------
+% Reviewer 1 - Comment 3
+% ------------------------------------------------------------
+
+\reviewercomment{3}{
+In order to strengthen the empirical foundations, the authors should:
+
+1. Addition of at least one modern baseline (e.g., flow matching or
+score-based manifold model).
+}
+
+\response{
+We agree and have added a modern flow-matching baseline to the revised
+manuscript. Specifically, we implemented a Protein-Conditional Riemannian Flow
+Matching (PC-RFM) model and evaluated it under the same protein-conditioning
+setting and the same train/validation split used for the corresponding
+PC-NCSF experiment.
+
+On the paired protein-level comparison, 493 proteins were represented in the
+validation outputs of both methods. PC-NCSF achieved a lower mean validation
+NLL than PC-RFM for 443 of these 493 proteins (89.9\%). The paired difference
+was statistically significant using both the Wilcoxon signed-rank test
+($p=3.8\times10^{-69}$) and the paired $t$-test
+($p=1.1\times10^{-85}$), with a large standardized paired effect
+(Cohen's $d=1.09$).
+
+Importantly, the comparison is performed at the \emph{protein level} rather
+than treating individual residues as independent observations. This provides
+a more appropriate assessment of the consistency of the performance
+difference across proteins and directly addresses the need for statistical
+validation of the model comparison.
+
+These results have been added as a new experiment and are reported in the
+revised manuscript.
+
+\textbf{Location:} Section~3.1.3, ``Comparison with a Modern Flow-Matching
+Baseline,'' and Table~3.
+}
+
+
+% ------------------------------------------------------------
+% Reviewer 1 - Comment 4
+% ------------------------------------------------------------
+
+\reviewercomment{4}{
+In order to strengthen the empirical foundations, the authors should:
+
+2. Explicit discussion of the zero-shot limitation in the
+abstract/conclusion, not just Section 2.5.
+}
+
+\response{
+We agree. As also noted in our response to Comment~2, the inability of the
+current lookup-based conditioning mechanism to generalize directly to unseen
+proteins is an important limitation of the proposed formulation.
+
+We have therefore added an explicit statement of this limitation to both the
+Abstract and the Conclusion. These revisions make clear that the current
+protein-conditional formulation provides protein-specific densities for
+proteins represented during training but does not constitute a zero-shot model
+for previously unseen proteins.
+
+\textbf{Location:} Abstract; Section~4, ``Conclusion'' (Limitations).
+}
+
+
+% ------------------------------------------------------------
+% Reviewer 1 - Comment 5
+% ------------------------------------------------------------
+
+\reviewercomment{5}{
+In order to strengthen the empirical foundations, the authors should:
+
+3. Real-data clustering validation on SCOP datasets (currently only synthetic).
+}
+
+\response{
+We agree that evaluating the density-based clustering procedure on real
+structural data provides a substantially more informative assessment of its
+downstream utility. We have therefore extended the Hellinger-distance and
+Ward-linkage clustering pipeline, previously demonstrated only in the
+controlled synthetic experiments, to all four real SCOP benchmark tiers.
+
+Unlike the near-perfect separation observed in some controlled synthetic
+settings, clustering performance on the real SCOP datasets was weak, with
+Adjusted Rand Index (ARI) values ranging from 0.001 to 0.097 across the four
+tiers. We additionally examined alternative linkage choices and found that
+the overall conclusion was unchanged.
+
+We have deliberately retained and reported these results despite their weak
+performance because they provide an important qualification of the original
+downstream-utility claim. The revised manuscript now makes clear that improved
+protein-specific density estimation does not necessarily imply that the
+resulting density functions form strongly cluster-separable representations of
+complex real protein structural classes.
+
+Accordingly, we have moderated the interpretation of the clustering
+experiments. Accurate manifold-aware density estimation is now presented as
+the primary contribution of the work, whereas density-based clustering is
+treated as a secondary exploratory application. The strong synthetic
+clustering results remain useful as a controlled demonstration that the
+estimated densities can recover deliberately separated distributional
+structure, but they are no longer presented as evidence of comparable
+classification performance on real SCOP data.
+
+\textbf{Location:} Section~3.5, ``Real-Data Clustering Validation on SCOP,''
+Table~8; and Section~4, ``Conclusion'' (Limitations).
+}
+
+
+% ------------------------------------------------------------
+% Reviewer 1 - Comment 6
+% ------------------------------------------------------------
+
+\reviewercomment{6}{
+Considering the scale between 1,591 proteins and $\sim$732K residues
+(SCOP Easy) is modest by contemporary standards. AlphaFold2-era structural
+biology operates at hundreds of millions of structures.
+
+This work is unlikely to shift practice in protein structure modeling. It
+serves more as a principled statistical foundation than a tool practitioners
+will immediately adopt.
+}
+
+\response{
+We appreciate this perspective and agree that the scale of the datasets
+considered in this study is modest relative to contemporary large-scale
+protein-structure resources. The objective of the present work, however, is
+not large-scale protein structure prediction or foundation-model training.
+Rather, it is to investigate accurate likelihood-based density estimation for
+manifold-valued protein torsion-angle distributions and to determine whether
+protein conditioning improves such density estimates within a shared
+geometrically appropriate model.
+
+We have revised the manuscript to make this intended scope more explicit and
+to avoid overstating the immediate practical impact of the method. In
+particular, the Conclusion now characterizes the proposed framework as a
+statistical modeling approach for protein-specific angular distributions,
+while recognizing that evaluation on substantially larger structural
+collections and the development of transferable conditioning mechanisms will
+be necessary before broader practical applicability can be established.
+
+\textbf{Location:} Section~4, ``Conclusion'' (Limitations).
+}
+
+% ============================================================
+% Reviewer 2
+% ============================================================
+
+\subsection*{Reviewer 2}
+\addcontentsline{toc}{subsection}{Reviewer 2}
+
+
+% ------------------------------------------------------------
+% Comment 1
+% ------------------------------------------------------------
+
+\reviewercomment{1}{
+The manuscript presents a technically sound extension of neural circular
+spline flows to protein-conditional settings. Still, its novelty is severely
+limited because it directly adopts the core manifold flow architecture from
+Rezende et al. (2020) with only minor modifications (learned protein
+embeddings).
+}
+
+\response{
+We thank the Reviewer for this important comment. We agree that the underlying
+manifold normalizing-flow constructions are not a novel contribution of the
+present work. In particular, the circular, toroidal, and spherical geometric
+constructions used by PC-NCSF build on the framework of Rezende et al.
+(2020). We have therefore revised the Introduction to make this boundary of
+novelty explicit and to avoid attributing the underlying manifold-flow
+architecture itself to the present study.
+
+Our contribution is more specifically the protein-conditional formulation:
+learnable protein-identity embeddings are jointly optimized with a shared
+manifold flow, allowing a single model to yield distinct, individually
+queryable protein-specific angular density estimates while sharing statistical
+information across proteins. We have revised the manuscript to state this
+contribution more precisely and have moderated the corresponding novelty
+claims.
+
+To strengthen the empirical assessment of whether this conditional
+formulation provides value beyond the underlying manifold-flow construction,
+we have also added a new comparison with Protein-Conditional Riemannian Flow
+Matching (PC-RFM), a more recent continuous-time manifold generative-modeling
+approach. Under the matched experimental setting, PC-NCSF achieved lower
+mean validation NLL for 443 of the 493 proteins (89.9\%), with the paired
+difference supported by both the Wilcoxon signed-rank test
+($p = 3.8\times10^{-69}$) and the paired $t$-test
+($p = 1.1\times10^{-85}$), and a large paired effect size
+(Cohen's $d = 1.09$). These results are now reported in the new
+Section~3.1.3.
+
+Accordingly, we do not position PC-NCSF as a new manifold-flow geometry, but
+rather as a protein-conditional adaptation and empirical evaluation of
+established manifold-flow machinery for protein-specific angular density
+estimation.
+
+\textbf{Location:} Introduction, immediately following the list of main
+contributions; Section~3.1.3.
+}
+
+% ------------------------------------------------------------
+% Comment 2
+% ------------------------------------------------------------
+
+\reviewercomment{2}{
+The GitHub repository link is non-functional (CFFF), raising reproducibility
+concerns.
+}
+
+\response{
+We thank the Reviewer for identifying this issue. We have corrected the
+repository accessibility problem and verified that the repository is now
+publicly accessible at
+\url{https://github.com/mamintoosi-papers-codes/CFFF}.
+
+We have also reviewed the repository for consistency with the revised
+manuscript. In particular, an internal naming inconsistency in which some
+training scripts referred to the conditional model as ``PC-FFF'' has been
+corrected to ``PC-NCSF'', and the repository documentation and citation
+metadata have been updated accordingly. These revisions are intended to make
+the computational materials easier to identify and use alongside the
+manuscript and to improve the reproducibility of the reported experiments.
+
+\textbf{Location:} Abstract (implementation and code availability statement);
+GitHub repository and repository documentation.
+}
+
+% ------------------------------------------------------------
+% Comment 3
+% ------------------------------------------------------------
+
+\reviewercomment{3}{
+The conditioning mechanism via protein embeddings fails to generalise to
+unseen proteins, contradicting the claimed promise of "protein-specific"
+modelling.
+}
+
+\response{
+We thank the Reviewer for highlighting this important distinction. We agree
+that the current protein-identity embedding is a learned lookup representation
+and therefore does not support zero-shot generalization to proteins that were
+absent during model training. We have revised the manuscript to state this
+limitation explicitly and to clarify the intended scope of the term
+``protein-specific.''
+
+In the present formulation, ``protein-specific'' refers to the model's ability
+to learn and provide individually queryable conditional density estimates for
+each protein represented during training, while sharing the parameters of the
+underlying manifold flow across proteins. It is not intended to imply that
+PC-NCSF can infer the conformational density of a previously unseen protein
+from its sequence or structure.
+
+To prevent this distinction from being overstated, we now explicitly identify
+the lack of zero-shot generalization as a limitation in the Abstract,
+Introduction, and Conclusion. We also identify replacing the identity-based
+lookup embedding with sequence- or structure-derived conditioning
+representations as an important direction for future work.
+
+\textbf{Location:} Abstract; Introduction, immediately following the
+clarification of the contribution and novelty; Section~2.5; and Conclusion
+(Limitations).
+}
+
+
+% ------------------------------------------------------------
+% Comment 4
+% ------------------------------------------------------------
+
+\reviewercomment{4}{
+Additionally, the synthetic experiments use overly simplistic distributions
+(wrapped normal mixtures, conditional von Mises) that poorly represent the
+complex multimodal nature of real protein torsion angles.
+}
+
+\response{
+We thank the Reviewer for this important comment. We agree that controlled
+synthetic distributions cannot reproduce every aspect of the heterogeneity
+and multimodal complexity observed in empirical protein torsion-angle data.
+However, we would like to clarify that the synthetic settings were not chosen
+as arbitrary simplified distributions. In particular, the first simulation
+setting is motivated by the characteristic bimodal angular structure of
+consecutive $\mathrm{C}_\alpha$ atoms reported by Hamelryck et al. (2006),
+as already described in Section~3.2.1.
+
+The purpose of the simulation study is to provide protein-relevant angular
+settings in which the generating densities and group structure are known.
+This makes it possible to directly evaluate recovery of the protein-specific
+densities and to determine whether density-based clustering recovers the
+known ground-truth groups---assessments that cannot be performed in the same
+way on empirical protein data because the underlying densities are unknown.
+
+To make this rationale clearer, we have revised the opening paragraph of
+Section~3.2 to distinguish the role of the synthetic experiments from that
+of the real-data analyses. The synthetic experiments are intended as
+controlled methodological evaluations that complement, rather than replace,
+the experiments on real protein data in Section~3.3 and the real-data
+density-based clustering analysis in Section~3.5.
+
+\textbf{Location:} Section~3.2 (opening paragraph).
+}
+% ------------------------------------------------------------
+% Comment 5
+% ------------------------------------------------------------
+
+\reviewercomment{5}{
+At the same time, the real-data improvements (NLL differences of 0.05-0.1)
+are modest and not statistically validated.
+}
+
+\response{
+We thank the Reviewer for this important observation. We agree that the
+magnitude of the NLL improvement should be distinguished from its statistical
+support. To address this concern, we performed a paired protein-level analysis
+comparing the unconditional model with the conditional model using
+$d_{\mathrm{emb}}=16$.
+
+Specifically, we computed validation NLL separately for each protein and
+performed paired comparisons across the 493 proteins represented in both
+validation outputs. The conditional model achieved lower NLL for 283 of
+493 proteins (57.4\%), with a mean paired improvement (unconditional minus
+conditional NLL) of 0.060 nats. The paired difference was statistically
+significant under both the Wilcoxon signed-rank test
+($p = 5.3\times10^{-9}$) and the paired $t$-test
+($p = 2.3\times10^{-12}$), with a small standardized paired effect
+(Cohen's $d = 0.32$).
+
+We have added these results to Section~3.1.2. We have also revised the
+interpretation to distinguish statistical evidence for a systematic
+improvement from its modest effect magnitude, rather than relying solely on
+the aggregate validation NLL.
+
+\textbf{Location:} Section~3.1.2, immediately following the comparison of
+embedding dimensions with the unconditional baseline.
+}
+
+
+% ------------------------------------------------------------
+% Comment 6
+% ------------------------------------------------------------
+
+\reviewercomment{6}{
+The clustering application, while interesting, uses density estimates on
+fixed grids rather than the exact likelihood formulation the paper claims
+as its advantage.
+}
+
+\response{
+We thank the Reviewer for raising this point. We agree that the original
+description could give the impression that the learned densities themselves
+were approximated on a fixed grid. This is not the case.
+
+The fixed grid is used only to numerically approximate the Hellinger-distance
+integral required for the downstream clustering analysis. At each grid point,
+the protein-specific density is evaluated directly from the trained PC-NCSF
+model using its invertible change-of-variables formulation; the grid is not
+used to estimate or approximate the underlying density function. Thus, the
+numerical approximation concerns the integration required to obtain pairwise
+Hellinger distances, rather than the pointwise density or likelihood
+evaluation provided by PC-NCSF.
+
+We have revised Section~3.2.3 to make this distinction explicit and to remove
+the potentially ambiguous wording that the estimated densities are
+``evaluated on a uniform grid.''
+
+\textbf{Location:} Section~3.2.3, Density-Based Clustering
+(Clustering procedure).
+}
+
+\end{document}
