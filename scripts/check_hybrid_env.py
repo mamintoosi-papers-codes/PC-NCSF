@@ -25,10 +25,18 @@ import sklearn, sklearn.metrics
 from scipy.stats import spearmanr
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from scop_clustering import TIER_RUNS, ROOT, hellinger_matrix, load_proteins
-from clustering_hybrid import (ALPHA_GRID, b1_features, b2_features,
-                               euclidean_matrix, hybrid_matrix,
-                               load_features_data, median_normalise, zscore)
+try:
+    from scop_clustering import TIER_RUNS, ROOT, hellinger_matrix
+    from clustering_hybrid import (ALPHA_GRID, b1_features, b2_features,
+                                   euclidean_matrix, hybrid_matrix,
+                                   load_features_data, median_normalise, zscore)
+except ImportError as e:
+    print(f"ImportError: {e}")
+    print("NOTE: scripts/scop_clustering.py imports torch and zuko at module level,")
+    print("so the env used here must contain both, even though this smoke test")
+    print("never calls the model. Pick an env that has them (e.g. the audit's 'pth'")
+    print("env) via HYBRID_PYTHON (bat) or PYTHON=... (bash), then rerun.")
+    sys.exit(2)
 
 EXPECTED_SLOPE_RANGES = {
     "D_model~D_stats": (0.45, 0.80),
@@ -47,7 +55,7 @@ def main():
 
     problems = []
     for tier, ckpt_rel in TIER_RUNS.items():
-        print(f"\\n[{tier}]")
+        print(f"\n[{tier}]")
         ckpt = os.path.join(ROOT, ckpt_rel)
         df = pd.read_csv(os.path.join(ROOT, "SCOP", tier, "data.csv"), nrows=5)
         missing = {"theta", "tau", "res_seq", "pdb_id", "category"} - set(df.columns)
@@ -96,14 +104,14 @@ def main():
 
     # alpha grid sanity
     assert tuple(ALPHA_GRID) == (0.0, 0.25, 0.5, 0.75, 1.0), "alpha grid drifted"
-    print("\\nalpha grid:", ALPHA_GRID, "(pre-registered, unchanged)")
+    print("\nalpha grid:", ALPHA_GRID, "(pre-registered, unchanged)")
 
     if problems:
-        print("\\nFAILED:")
+        print("\nFAILED:")
         for p in problems:
             print(" -", p)
         sys.exit(1)
-    print("\\nSMOKE TEST PASSED (no files written)")
+    print("\nSMOKE TEST PASSED (no files written)")
 
 
 if __name__ == "__main__":

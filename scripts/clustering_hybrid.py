@@ -145,8 +145,7 @@ def b2_features(theta, tau, res_seq, pdb_idx, n_proteins, strict_run_bound=False
     R1, m1 = _stats(z1)
     R2_, m2_ = _stats(z2)
     R3_, _m3 = _stats(dz)
-    g = np.concatenate([m1, R1, m2_, R2_, R3_, valid[:, None] / np.maximum(valid.max(), 1)],
-                       axis=1)   # [n, 6]
+    g = np.column_stack([m1, R1, m2_, R2_, R3_, valid / np.maximum(valid.max(), 1)])  # [n, 6]
     g[np.isnan(g)] = 0.0
     return g, valid
 
@@ -264,7 +263,7 @@ def knn_eval(D, labels, k_cl, tag, results):
 
 # --------------------------------------------------------------- per-tier run
 def run_tier(tier, grid, rows, strict_run_bound=False, do_nested=False, do_knn=False):
-    print(f"\\n=== {tier} ===", flush=True)
+    print(f"\n=== {tier} ===", flush=True)
     df, feats, labels, proteins = load_features_data(tier)
     n = feats["n_proteins"]
     k = len(np.unique(labels))
@@ -361,11 +360,11 @@ def main():
         suffix += "_nested"
     main_csv = os.path.join(out_dir, f"hybrid_{args.tier}_g{args.grid}{suffix}.csv")
     df.to_csv(main_csv, index=False)
-    print("\\n=== Pre-registered ablation (Ward linkage, k = n_categories) ===")
+    print("\n=== Pre-registered ablation (Ward linkage, k = n_categories) ===")
     cols = ["tier", "representation", "alpha", "ARI", "NMI"]
     w = df[(df.linkage == "ward") & ~df.representation.str.startswith("R3-nested")]
     print(w[cols].to_string(index=False, na_rep="-"))
-    print(f"\\nsaved: {main_csv}")
+    print(f"\nsaved: {main_csv}")
 
 
 if __name__ == "__main__":
