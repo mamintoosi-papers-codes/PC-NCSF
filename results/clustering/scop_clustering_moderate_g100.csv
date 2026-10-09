@@ -1,0 +1,5 @@
+tier,linkage,k,ARI,NMI,n_proteins,grid
+moderate,ward,4,0.059,0.1211,1594,100
+moderate,average,4,0.0213,0.0481,1594,100
+moderate,complete,4,0.0563,0.0947,1594,100
+moderate,single,4,0.0,0.005,1594,100

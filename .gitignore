@@ -65,8 +65,6 @@ checkpoints/
 models/
 artifacts/
 wandb/
-reports/
-reports*/
 SCOP/
 
 # Project-specific data directory (keep placeholders)
@@ -98,3 +96,4 @@ datasets/
 secrets.*
 config/*.local.*
 /.freebuff
+/reports-01

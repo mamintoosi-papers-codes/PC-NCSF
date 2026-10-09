@@ -1,0 +1,17 @@
+tier,linkage,k,ARI,NMI,n_proteins,grid
+easy,ward,4,0.0033,0.0096,1590,100
+easy,average,4,-0.0002,0.007,1590,100
+easy,complete,4,0.0028,0.0075,1590,100
+easy,single,4,-0.0,0.0064,1590,100
+moderate,ward,4,0.059,0.1211,1594,100
+moderate,average,4,0.0213,0.0481,1594,100
+moderate,complete,4,0.0563,0.0947,1594,100
+moderate,single,4,0.0,0.005,1594,100
+hard,ward,4,0.0761,0.0977,371,100
+hard,average,4,0.0406,0.0624,371,100
+hard,complete,4,0.0793,0.1002,371,100
+hard,single,4,-0.0013,0.0383,371,100
+challenging,ward,4,0.0995,0.1431,194,100
+challenging,average,4,0.0995,0.1431,194,100
+challenging,complete,4,0.0995,0.1431,194,100
+challenging,single,4,0.092,0.1544,194,100
