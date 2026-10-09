@@ -125,7 +125,10 @@ def b2_features(theta, tau, res_seq, pdb_idx, n_proteins, strict_run_bound=False
     dta = np.diff(tau)
     dres = np.diff(res_seq)
     same_prot = pdb_idx[1:] == pdb_idx[:-1]
-    good = same_prot & (np.abs(dres) == 1)
+    # pre-registered rule (report 3.2): consecutive rows within the same pdb_id
+    # block ONLY when dres_seq == 1.  d<=0 (chain/model resets) are excluded;
+    # do NOT use abs(dres)==1, which would admit rare backward-pair errors.
+    good = same_prot & (dres == 1)
     if strict_run_bound:
         resets = same_prot & (dres <= 0)
         bad = np.unique(pdb_idx[:-1][resets])
