@@ -1,33 +1,33 @@
 # Protein-Conditional Normalizing Flows on Manifolds for Backbone Torsion Angle Modeling
 
-This repository implements **Protein-Conditional Free-Form Flows (PC-FFF)** for **protein-specific** modeling of protein backbone torsion angle distributions on the torus manifold.
+This repository implements **Protein-Conditional Neural Circular Spline Flows (PC-NCSF)** for protein-specific modeling of protein backbone torsion-angle distributions on compact manifolds.
 
 ## 📋 Overview
 
-Protein structure is largely determined by the distribution of backbone torsion angles $(\phi, \psi)$. While traditional Ramachandran plots provide a global view of these distributions, they fail to capture **protein-specific** preferences. Building on recent advances in normalizing flows on manifolds, particularly Free-form Flows (FFF), we implement **Protein-Conditional Free-form Flows (PC-FFF)** that condition the flow transformation on **protein identity**, enabling **protein-specific** modeling of torsion angle distributions.
+Protein structure is largely determined by the distribution of backbone torsion angles $(\phi, \psi)$. These variables live on a torus (or, for other angular representations, on a sphere), where standard Euclidean density models ignore periodicity and manifold geometry. Ramachandran plots provide a useful global view but capture a single shared distribution and therefore miss protein-specific conformational preferences.
 
-By embedding **protein identifiers** into continuous representations, our framework learns distinct conditional densities $p(\phi, \psi \mid \text{protein})$. Experiments on the Torus Protein dataset demonstrate that PC-FFF significantly improves validation likelihoods compared to unconditional baselines, yielding more realistic protein-specific distributions.
+PC-NCSF extends **neural circular spline flows** (NCSF, from [zuko](https://github.com/probabilists/zuko)) to be **conditioned on protein identity** through learned protein embeddings. A single shared model thereby represents many distinct yet statistically related densities $p(\phi, \psi \mid \text{protein})$ while retaining **exact likelihood evaluation** and geometry-respecting, invertible transformations on the manifold.
 
-This work highlights the importance of **protein-aware** conditioning for generative modeling of protein backbone conformations on the torus manifold.
-
-The implementation includes two main approaches:
-
-1. **FFF (Unconditional)**: Standard free-form flow for torus density estimation
-2. **PC-FFF (Conditional)**: Conditioned free-form flow that incorporates protein type information via embedding layers
+The manifold flow constructions build on the framework of Rezende et al. (2020). The `fff/` package in this repository (derived from [vislearn/FFF](https://github.com/vislearn/FFF)) provides supporting infrastructure — dataset loading, training/saving utilities, and torus evaluation helpers — while the generative model itself is the zuko NCSF flow.
 
 ## 🏗️ Project Structure
 
 ```
 .
-├── fff/                     # Core FFF library components
-├── runs/                    # Training outputs and checkpoints
-├── reports/                 # Generated reports and visualizations
-├── configs/                 # Configuration files
-├── circularspline_protein.py              # Unconditional model training script
-├── circularspline_protein_embedding_c.py  # Conditional model training script
-├── report_generator.py      # Report generation and visualization
-├── compare_batch_size.py    # Batch size comparison utility
-├── compare_embeddings.py    # Embedding dimension comparison utility
+├── fff/                          # Supporting library (data loading, train utils, torus evaluation)
+├── configs/                      # Configuration files
+├── scripts/                      # SCOP density-based clustering reproduction & robustness checks
+├── SCOP/                         # SCOP angular datasets (easy/moderate/hard/challenging; not in git)
+├── results/                      # Clustering results (CSV) and cached per-protein densities
+├── runs/                         # Training checkpoints and metrics (not in git)
+├── reports/                      # Generated reports and visualizations
+├── paper/                        # Manuscript source and reviewer response
+├── circularspline_protein.py               # Unconditional NCSF training (torus)
+├── circularspline_protein_embedding_c.py   # Protein-conditional NCSF (PC-NCSF) training
+├── train.py                      # Training entry point (zuko NCSF)
+├── report_generator.py           # Report generation and visualization
+├── compare_batch_size.py         # Batch-size comparison utility
+├── compare_embeddings.py         # Embedding-dimension comparison utility
 └── README.md
 ```
 
@@ -37,8 +37,8 @@ The implementation includes two main approaches:
 
 1. Clone the repository:
 ```bash
-git clone <your-repo-url>
-cd <repo-name>
+git clone https://github.com/mamintoosi-papers-codes/PC-NCSF
+cd PC-NCSF
 ```
 
 2. Install dependencies:
@@ -48,87 +48,78 @@ pip install -r requirements.txt
 
 ### Training Models
 
-**Unconditional Model (FFF):**
+**Unconditional baseline (NCSF):**
 ```bash
 python circularspline_protein.py --batch-size 256 --epochs 40
 ```
 
-**Conditional Model (PC-FFF):**
+**Protein-conditional model (PC-NCSF):**
 ```bash
 python circularspline_protein_embedding_c.py --batch-size 256 --epochs 40 --embedding-dim 16 --plot-all
 ```
 
+### SCOP Density-Based Clustering
+
+The real-data clustering experiment (manuscript Section 3.5) can be reproduced from the cached per-protein densities:
+
+```bash
+bash scripts/run_clustering_full.sh
+```
+
+This reproduces Table 8 (Hellinger distance + Ward linkage), a robustness sweep over alternative distances/linkages/cluster counts, and a $k$-nearest-neighbour retrieval diagnostic. See `scripts/` for details.
+
 ### Generating Reports
 
-After training, generate comprehensive reports and visualizations:
 ```bash
 python report_generator.py
 ```
 
-This will create:
-- Density contour plots for all trained models
-- Loss comparison curves
-- Excel summary with detailed metrics and model configurations
+This creates density contour plots, loss-comparison curves, and an Excel summary of metrics and model configurations.
 
 ## 📊 Model Types
 
-### FFF (Free-form Flow)
-- Unconditional density estimation on the torus
-- Learns the distribution of protein backbone dihedral angles
-- Output files prefixed with `uncond_bs*_ep*`
+### Unconditional NCSF
+- Single shared density over toroidal angular data.
+- Output files prefixed `uncond_bs*_ep*`.
 
-### PC-FFF (Conditioned Free-form Flow)
-- Conditional density estimation using residue type embeddings
-- Incorporates protein sequence information
-- Output files prefixed with `cond_bs*_ep*_ed*`
+### PC-NCSF (Protein-Conditional NCSF)
+- Conditions the flow on a learned protein-identity embedding, yielding one distinct, queryable density per protein.
+- Output files prefixed `cond_bs*_ep*_ed*`.
 
-## 📈 Output Files
+## 📈 Outputs
 
-The training process generates:
-
-1. **Checkpoints**: Model weights in `runs/` directory
-2. **Metrics**: Training/validation loss curves in CSV format
-3. **Visualizations**: 
-   - Density contour plots (Φ-Ψ space)
-   - Loss comparison curves
-   - Model performance summaries
-
-Report generator creates:
-- `loss_curves_comparison.png`: Comparison of FFF vs PC-FFF performance
-- `loss_curves_summary.xlsx`: Detailed Excel report with:
-  - All model data
-  - Summary statistics
-  - Model configurations
-  - Separate sheets for each model type
+1. **Checkpoints** in `runs/` (flow state dict + protein-embedding table + config).
+2. **Metrics**: training/validation NLL curves (CSV).
+3. **Visualizations**: density contours in $(\phi,\psi)$ space, loss comparisons, model summaries.
+4. **Clustering results** in `results/clustering/` (ARI/NMI per tier and variant, $k$-NN retrieval, cached densities).
 
 ## ⚙️ Configuration
 
 Key hyperparameters:
-- `--batch-size`: Training batch size (64, 128, 256, etc.)
-- `--epochs`: Number of training epochs
-- `--embedding-dim`: Embedding dimension for conditional models (4, 8, 16, 32)
-- `--plot-all`: Generate visualizations during training
+- `--batch-size`: training batch size (64, 128, 256, …)
+- `--epochs`: number of training epochs
+- `--embedding-dim`: dimension of the protein-identity embedding for PC-NCSF (4, 8, 16, 32)
+- `--plot-all`: generate visualizations during training
 
 ## 📖 Citation
 
-If you use this code in your research, please cite the original FFF papers:
+If you use this code in your research, please cite:
 
 ```bibtex
-@inproceedings{PC-FFF2025,
-    title = {{Protein-Conditional Normalizing Flows on Manifolds for Backbone Torsion Angle Modeling}},
-    author = {...},
-    booktitle = {...},
-    year = {2026}
+@article{PCNCSF2026,
+    title   = {Protein-Conditional Normalizing Flows on Manifolds for Backbone Torsion Angle Modeling},
+    author  = {Amintoosi, Mahmood and others},
+    journal = {arXiv preprint},
+    year    = {2026}
 }
 ```
 
+The manifold normalizing-flow constructions build on Rezende et al. (2020), and the flow implementations use [zuko](https://github.com/probabilists/zuko). The supporting `fff/` infrastructure is derived from [vislearn/FFF](https://github.com/vislearn/FFF).
+
 ## 🤝 Contributing
 
-This implementation is based on the official FFF repository:
-https://github.com/vislearn/FFF
-
-For issues and contributions related to this specific protein torsion angle implementation, please open an issue in this repository.
+For issues and contributions related to this protein torsion-angle implementation, please open an issue in this repository.
 
 ## 📄 License
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+This project is licensed under the MIT License — see the LICENSE file for details.
