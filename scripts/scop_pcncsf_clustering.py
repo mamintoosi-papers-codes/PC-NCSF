@@ -94,7 +94,21 @@ def find_checkpoint(runs_dir, tier, explicit_path=None):
         if not os.path.exists(explicit_path):
             raise FileNotFoundError(f"--ckpt path for {tier} does not exist: {explicit_path}")
         return explicit_path
-    candidates = sorted(glob.glob(os.path.join(runs_dir, tier, "*", "best_flow.pt")))
+    candidates = sorted(glob.glob(os.path.join(runs_dir, tier, "**", "best_flow.pt"), recursive=True))
+    # The training layout nests checkpoints as runs/<tier>/<exp>/cond/best_flow.pt
+    # (conditional PC-NCSF) and .../uncond/best_flow.pt (unconditional baseline).
+    # This script REQUIRES the conditional run (it needs embedding_state_dict),
+    # so prefer checkpoints under a directory literally named 'cond'.
+    cond = [c for c in candidates if "cond" in os.path.normpath(c).split(os.sep)
+            and "uncond" not in os.path.normpath(c).split(os.sep)]
+    if len(cond) == 1:
+        return cond[0]
+    if len(cond) > 1:
+        raise RuntimeError(
+            f"Multiple conditional checkpoints found for {tier}, please disambiguate with "
+            f"--ckpt {tier}=<one of these>:\n  " + "\n  ".join(cond))
+    if len(candidates) == 1:
+        return candidates[0]
     if len(candidates) == 1:
         return candidates[0]
     if len(candidates) == 0:
@@ -107,64 +121,67 @@ def find_checkpoint(runs_dir, tier, explicit_path=None):
 
 
 # ---------------------------------------------------------------------------
-# Protein label <-> SCOP category mapping (mirrors report_generator.py exactly)
+# Protein label <-> SCOP category mapping (must mirror fff.data.scop.get_scop_dataset)
 # ---------------------------------------------------------------------------
 def protein_category_mapping(scop_csv, expected_n=None):
-    """Picks the identifier column by EVIDENCE rather than a fixed priority:
-    if expected_n (the checkpoint's embedding row count) is given, try
-    protein_name / domain_id / pdb_id in that order and use the first whose
-    number of unique values matches expected_n exactly. This matters because
-    protein_name can collide across genuinely different domains (e.g. many
-    unrelated PDB entries named "LYSOZYME"), which report_generator.py's
-    column priority does not account for. If none match, falls back to the
-    old priority order and prints all three counts so the mismatch is visible
-    rather than silently trusted."""
+    """Return categories in the *same order* as the loader's integer conditions.
+
+    Training calls load_dataset(..., condition_on="residue"). The SCOP loader
+    therefore uses a CSV column named 'residue' if present, otherwise pdb_id,
+    otherwise domain_id (see fff/data/scop.py). It drops rows with missing
+    angles BEFORE factorizing identifiers. Do not infer the identifier column
+    from unique counts: equal counts do not prove equal identities/order.
+
+    IDs that map to more than one SCOP category are returned in
+    ambiguous_indices and must be excluded from label-based scoring.
+    """
     df = pd.read_csv(scop_csv)
-    candidates = [c for c in ("protein_name", "domain_id", "pdb_id") if c in df.columns]
-    if not candidates:
+    if "theta" in df.columns and "tau" in df.columns:
+        angle_cols = ["theta", "tau"]
+    elif "phi" in df.columns and "psi" in df.columns:
+        angle_cols = ["phi", "psi"]
+    else:
+        angle_cols = [c for c in df.columns
+                      if any(k in c.lower() for k in ("phi", "psi", "theta", "tau"))][:2]
+        if len(angle_cols) != 2:
+            raise ValueError(f"Could not identify two angle columns in {scop_csv}")
+    df = df.dropna(subset=angle_cols).reset_index(drop=True)
+
+    # Exact identifier-selection logic from get_scop_dataset(...,
+    # condition_on="residue").
+    if "residue" in df.columns:
+        prot_col = "residue"
+    elif "pdb_id" in df.columns:
+        prot_col = "pdb_id"
+    elif "domain_id" in df.columns:
+        prot_col = "domain_id"
+    else:
         id_cols = [c for c in df.columns if "protein" in c.lower() or "id" in c.lower()]
         if not id_cols:
             raise ValueError(f"No protein identifier column found in {scop_csv}")
-        candidates = id_cols
-
-    counts = {c: df[c].nunique() for c in candidates}
-    print(f"  candidate id columns and unique counts: {counts}"
-          + (f"  (checkpoint expects {expected_n})" if expected_n is not None else ""))
-
-    prot_col = None
-    if expected_n is not None:
-        for c in candidates:
-            if counts[c] == expected_n:
-                prot_col = c
-                break
-    if prot_col is None:
-        prot_col = candidates[0]
-        if expected_n is not None:
-            print(f"  WARNING: no candidate column has exactly {expected_n} unique values; "
-                  f"defaulting to '{prot_col}' ({counts[prot_col]} unique) -- verify this manually.")
-    else:
-        print(f"  using '{prot_col}' as the protein identifier (matches checkpoint exactly)")
-
+        prot_col = id_cols[0]
     codes, uniques = pd.factorize(df[prot_col])
+    counts = np.bincount(codes, minlength=len(uniques))
+    if expected_n is not None and len(uniques) != expected_n:
+        print(f"  ERROR: loader-compatible '{prot_col}' has {len(uniques)} IDs, "
+              f"but checkpoint embedding has {expected_n} rows.")
+
+    cat_col = "category" if "category" in df.columns else "class"
     categories = []
+    ambiguous_indices = []
     ambiguous = []
     for i in range(len(uniques)):
         mask = codes == i
-        if "category" in df.columns:
-            cat_values = df.loc[mask, "category"]
-        elif "class" in df.columns:
-            cat_values = df.loc[mask, "class"]
-        else:
-            cat_values = pd.Series([""])
+        cat_values = df.loc[mask, cat_col].dropna().astype(str) if cat_col in df.columns else pd.Series([""])
         if cat_values.nunique() > 1:
+            ambiguous_indices.append(i)
             ambiguous.append((uniques[i], sorted(cat_values.unique().tolist())))
-        categories.append(str(cat_values.iloc[0]))
+        categories.append(str(cat_values.iloc[0]) if len(cat_values) else "UNKNOWN")
 
     if ambiguous:
-        print(f"  WARNING: {len(ambiguous)} value(s) of '{prot_col}' map to more than one category "
-              f"(ground truth is ambiguous for these -- using the first-seen category). "
-              f"e.g. {ambiguous[:3]}")
-    return categories, prot_col
+        print(f"  WARNING: {len(ambiguous)} '{prot_col}' IDs map to multiple SCOP categories; "
+              f"these IDs will be excluded from ARI/NMI. Examples: {ambiguous[:3]}")
+    return categories, prot_col, ambiguous_indices
 
 
 # ---------------------------------------------------------------------------
@@ -223,8 +240,8 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description="Real-SCOP PC-NCSF density-based clustering (ARI/NMI)")
     ap.add_argument("--runs-dir", default="runs")
     ap.add_argument("--scop-root", default=".", help="Directory containing <scop-folder-name>/<tier>/data.csv")
-    ap.add_argument("--scop-folder-name", default="Scop_data",
-                    help="Name of the folder holding the per-tier SCOP subfolders (default: Scop_data)")
+    ap.add_argument("--scop-folder-name", default="SCOP",
+                    help="Name of the folder holding the per-tier SCOP subfolders (default: SCOP)")
     ap.add_argument("--tiers", nargs="+", default=["scop_easy", "scop_moderate", "scop_hard", "scop_challenging"])
     ap.add_argument("--ckpt", action="append", default=[],
                     help="Explicit override 'tier=path/to/best_flow.pt' (repeatable)")
@@ -260,22 +277,33 @@ def main(argv=None):
 
         flow, embedding, config = load_pcncsf_checkpoint(ckpt_path, args.device)
         n_proteins = embedding.num_embeddings
-        categories, prot_col = protein_category_mapping(scop_csv, expected_n=n_proteins)
+        categories, prot_col, ambiguous_indices = protein_category_mapping(scop_csv, expected_n=n_proteins)
 
         if len(categories) != n_proteins:
-            print(f"  WARNING: {len(categories)} unique '{prot_col}' values in the CSV but the "
-                  f"checkpoint's embedding has {n_proteins} rows -- the mapping below is UNRELIABLE. "
-                  f"Do not trust this tier's ARI/NMI until this is resolved.")
+            print(f"  ERROR: {len(categories)} loader-compatible '{prot_col}' IDs but "
+                  f"{n_proteins} checkpoint embedding rows. Skipping this tier.")
             continue
 
+        keep_indices = [i for i in range(n_proteins) if i not in set(ambiguous_indices)]
+        if len(keep_indices) < 2:
+            print("  Fewer than two unambiguous proteins remain; skipping.")
+            continue
+        categories = [categories[i] for i in keep_indices]
+        if ambiguous_indices:
+            print(f"  Scoring {len(keep_indices)} unambiguous proteins; "
+                  f"excluded {len(ambiguous_indices)} ambiguous IDs.")
+
         k = len(set(categories))
-        m = n_proteins
+        m = len(categories)
         print(f"  m (unique proteins) = {m}, k (categories) = {k}")
 
         densities, cell_area = per_protein_density_grid(
             flow, embedding, n_proteins, args.device, args.grid_size, args.batch_proteins)
         condensed_dist = hellinger_distance_matrix(densities, cell_area)
+        full_dist = squareform(condensed_dist)
+        condensed_dist = squareform(full_dist[np.ix_(keep_indices, keep_indices)], checks=False)
         row = {"tier": tier, "m": m, "k": k, "checkpoint": ckpt_path}
+        row["n_ambiguous_excluded"] = len(ambiguous_indices)
         for method in ("ward", "average", "complete"):
             ari, nmi, pred = cluster_and_score(condensed_dist, categories, k, method=method)
             sizes = sorted(pd.Series(pred).value_counts().tolist(), reverse=True)

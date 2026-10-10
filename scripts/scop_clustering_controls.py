@@ -29,9 +29,10 @@ Choices fixed IN ADVANCE (they were not tuned on the outcome):
     scop_pcncsf_clustering.py).
   * Every row of the output table is reported, whatever it shows.
 
-The KDE baseline uses ALL residues of each protein (train + validation), because
-the train/validation split cannot be reproduced from here; the model saw only
-the training part. This slightly favours the baseline and is noted in the output.
+The KDE baseline uses ALL residues of each protein (train + validation). The
+training split seed is not stored explicitly in the checkpoint, so exact train-only
+KDE reconstruction is not claimed; treat this as a transductive baseline, not a
+strictly data-matched comparison with PC-NCSF.
 
 Usage (command line):
     python scop_clustering_controls.py --runs-dir runs --scop-root . \
@@ -90,43 +91,62 @@ def get_loader_arrays(tier, loader_root="."):
 # 0. Label alignment check (label index -> SCOP category)
 # ---------------------------------------------------------------------------
 def build_label_mapping(csv_path, loader_labels, min_match=0.9):
-    """The training script indexes the embedding by an integer label produced
-    inside fff.data. The ground-truth category of label i is only known if we
-    know which identifier that label stands for. Instead of assuming, test every
-    candidate (identifier column x ordering) against the loader's own residue
-    counts per label: the right candidate reproduces the counts for (almost) every
-    label, a wrong one does not. Returns (categories_by_label, info) or (None, info).
+    """Reconstruct the exact identifier ordering used by fff.data.scop.
+
+    Training passes condition_on='residue'; the SCOP loader uses that column
+    only if it exists, otherwise pdb_id, then domain_id. It drops missing-angle
+    rows before factorizing, so this function must do the same. Ambiguous IDs
+    are returned separately and excluded from label-based scoring.
     """
     df = pd.read_csv(csv_path)
-    valid = df[["theta", "tau"]].notna().all(axis=1).values
+    if "theta" in df.columns and "tau" in df.columns:
+        angle_cols = ["theta", "tau"]
+    elif "phi" in df.columns and "psi" in df.columns:
+        angle_cols = ["phi", "psi"]
+    else:
+        angle_cols = [c for c in df.columns
+                      if any(k in c.lower() for k in ("phi", "psi", "theta", "tau"))][:2]
+        if len(angle_cols) != 2:
+            raise ValueError(f"Could not identify two angle columns in {csv_path}")
+    df = df.dropna(subset=angle_cols).reset_index(drop=True)
+    if "residue" in df.columns:
+        col = "residue"
+    elif "pdb_id" in df.columns:
+        col = "pdb_id"
+    elif "domain_id" in df.columns:
+        col = "domain_id"
+    else:
+        id_cols = [c for c in df.columns if "protein" in c.lower() or "id" in c.lower()]
+        if not id_cols:
+            raise ValueError(f"No protein identifier column found in {csv_path}")
+        col = id_cols[0]
     n_labels = int(loader_labels.max()) + 1
     counts_loader = np.bincount(loader_labels.numpy(), minlength=n_labels)
-    cat_col = "category" if "category" in df.columns else "class"
-
-    rows, best = [], None
-    for col in [c for c in ("pdb_id", "domain_id", "protein_name") if c in df.columns]:
-        for order in ("first-appearance", "sorted"):
-            codes, uniques = pd.factorize(df[col], sort=(order == "sorted"))
-            if len(uniques) != n_labels:
-                rows.append((col, order, len(uniques), float("nan")))
-                continue
-            counts_csv = np.bincount(codes[valid], minlength=n_labels)
-            frac = float((counts_csv == counts_loader).mean())
-            rows.append((col, order, len(uniques), frac))
-            if best is None or frac > best[0]:
-                best = (frac, col, order, codes)
-
-    info = {"candidates": rows, "n_labels": n_labels}
-    if best is None or best[0] < min_match:
+    codes, uniques = pd.factorize(df[col])
+    counts_csv = np.bincount(codes, minlength=len(uniques))
+    frac = float(np.mean(counts_csv == counts_loader)) if len(uniques) == n_labels else 0.0
+    info = {"candidates": [(col, "first-appearance", len(uniques), frac)],
+            "n_labels": n_labels, "accepted": None}
+    if len(uniques) != n_labels or not np.array_equal(counts_csv, counts_loader):
         info["accepted"] = None
-        return None, info
+        return None, info, []
 
-    frac, col, order, codes = best
-    grouped = pd.Series(df[cat_col].values).groupby(codes)
-    categories = [str(v) for v in grouped.first().reindex(range(n_labels)).values]
-    info.update({"accepted": (col, order), "match": frac,
-                 "ambiguous": int((grouped.nunique() > 1).sum())})
-    return categories, info
+    cat_col = "category" if "category" in df.columns else "class"
+    categories, ambiguous_indices = [], []
+    for i in range(n_labels):
+        vals = df.loc[codes == i, cat_col].dropna().astype(str) if cat_col in df.columns else pd.Series(["UNKNOWN"])
+        if vals.nunique() > 1:
+            ambiguous_indices.append(i)
+        categories.append(str(vals.iloc[0]) if len(vals) else "UNKNOWN")
+    info.update({"accepted": (col, "first-appearance"), "match": frac,
+                 "ambiguous": len(ambiguous_indices)})
+    return categories, info, ambiguous_indices
+
+
+def subset_condensed_distance(condensed, keep_indices):
+    """Subset a SciPy condensed distance vector by retained row indices."""
+    full = squareform(condensed)
+    return squareform(full[np.ix_(keep_indices, keep_indices)], checks=False)
 
 
 # ---------------------------------------------------------------------------
@@ -207,7 +227,7 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description="Control analyses for real-SCOP PC-NCSF clustering")
     ap.add_argument("--runs-dir", default="runs")
     ap.add_argument("--scop-root", default=".")
-    ap.add_argument("--scop-folder-name", default="Scop_data")
+    ap.add_argument("--scop-folder-name", default="SCOP")
     ap.add_argument("--loader-root", default=".", help="root passed to fff.data.load_dataset (as in training)")
     ap.add_argument("--tiers", nargs="+", default=["scop_easy", "scop_moderate", "scop_hard", "scop_challenging"])
     ap.add_argument("--ckpt", action="append", default=[], help="'tier=path/to/best_flow.pt' (repeatable)")
@@ -241,45 +261,53 @@ def main(argv=None):
         angles, labels = get_loader_arrays(tier, args.loader_root)
 
         # 0. label alignment
-        categories, info = build_label_mapping(csv_path, labels)
-        print("  label-alignment check (identifier column x ordering -> share of labels whose "
-              "residue count matches the loader):")
+        categories, info, ambiguous_indices = build_label_mapping(csv_path, labels)
+        print("  exact loader-compatible label alignment:")
         for col, order, n_unique, frac in info["candidates"]:
             share = "n/a (size differs)" if math.isnan(frac) else f"{100 * frac:.1f}%"
             print(f"    {col:13s} {order:17s} unique={n_unique:5d}  {share}")
         if categories is None:
-            print("  NOT ACCEPTED: no candidate reproduces the loader's per-label residue counts, so the "
-                  "label -> category alignment cannot be verified. Any ARI/NMI for this tier would be "
-                  "unreliable. Skipping; please send this output.")
+            print("  NOT ACCEPTED: loader-compatible ID counts/order do not match the training loader. "
+                  "Skipping this tier rather than reporting potentially invalid scores.")
             continue
         if info["n_labels"] != n_proteins:
             print(f"  WARNING: loader has {info['n_labels']} labels but the checkpoint embedding has "
                   f"{n_proteins} rows. Skipping.")
             continue
         col, order = info["accepted"]
-        print(f"  ACCEPTED: '{col}', {order}  ({100 * info['match']:.1f}% of labels match; "
-              f"{info['ambiguous']} label(s) with more than one category)")
+        print(f"  ACCEPTED: '{col}', {order}; exact residue-count alignment verified.")
+
+        keep_indices = [i for i in range(n_proteins) if i not in set(ambiguous_indices)]
+        if len(keep_indices) < 2:
+            print("  Fewer than two unambiguous proteins remain; skipping.")
+            continue
+        categories = [categories[i] for i in keep_indices]
+        if ambiguous_indices:
+            print(f"  Excluding {len(ambiguous_indices)} proteins with multiple SCOP categories; "
+                  f"scoring {len(keep_indices)} unambiguous proteins.")
 
         cats_sorted = sorted(set(categories))
         cat_to_id = {c: i for i, c in enumerate(cats_sorted)}
         true_ids = np.array([cat_to_id[c] for c in categories])
         k = len(cats_sorted)
-        print(f"  m = {n_proteins} proteins, k = {k} categories, class sizes = {np.bincount(true_ids).tolist()}")
+        print(f"  m = {len(keep_indices)} proteins, k = {k} categories, class sizes = {np.bincount(true_ids).tolist()}")
 
         reps = []
         dens, cell = per_protein_density_grid(flow, embedding, n_proteins, args.device,
                                               args.grid_size, batch_proteins=32)
-        reps.append(("PC-NCSF", hellinger_distance_matrix(dens, cell)))
+        reps.append(("PC-NCSF", subset_condensed_distance(
+            hellinger_distance_matrix(dens, cell), keep_indices)))
         for m in args.bw_mults:
             d, c = kde_densities(angles, labels, n_proteins, args.grid_size, m)
             reps.append((f"KDE x{m:g}" + (" (primary)" if m == 1.0 else " (sensitivity)"),
-                         hellinger_distance_matrix(d, c)))
+                         subset_condensed_distance(hellinger_distance_matrix(d, c), keep_indices)))
 
         header = f"  {'representation':24s} {'ARI':>7s} {'p':>7s} {'NMI':>7s} {'p':>7s} {'1-NN':>7s} {'chance':>7s} {'p':>7s}"
         print(header)
         for name, condensed in reps:
             _, _, pred = cluster_and_score(condensed, categories, k, method="ward")
-            res = {"tier": tier, "m": n_proteins, "k": k, "representation": name}
+            res = {"tier": tier, "m": len(keep_indices), "k": k,
+                   "n_ambiguous_excluded": len(ambiguous_indices), "representation": name}
             res.update(permutation_test_ari_nmi(true_ids, pred, args.n_perm, rng))
             res.update(one_nn_test(condensed, true_ids, args.n_perm, rng))
             results.append(res)

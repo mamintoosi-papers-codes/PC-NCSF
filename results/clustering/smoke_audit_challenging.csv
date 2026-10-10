@@ -1,0 +1,2 @@
+tier,m,k,checkpoint,n_ambiguous_excluded,ARI_ward,NMI_ward,ARI_average,NMI_average,ARI_complete,NMI_complete
+scop_challenging,193,4,runs\scop_challenging\ep20-bs512\cond\best_flow.pt,1,0.10319305244300585,0.13736491169904494,0.10399203859700294,0.14621075039721745,0.10399203859700294,0.14621075039721745
