@@ -63,11 +63,24 @@ def load_pcncsf_checkpoint(ckpt_path, device):
 
     flow = zuko.flows.NCSF(2, cond_dim, **config["network"]).to(device)
     if "flow_state_dict" in ckpt:
-        flow.load_state_dict(ckpt["flow_state_dict"])
+        sd = ckpt["flow_state_dict"]
     elif "state_dict" in ckpt:
-        flow.load_state_dict(ckpt["state_dict"])
+        sd = ckpt["state_dict"]
     else:
         raise KeyError(f"No flow state_dict found in checkpoint: {list(ckpt.keys())}")
+    # zuko renamed the Uniform base buffers: base._0/base._1 -> base.lower/base.upper.
+    # Checkpoints trained with the older zuko (Windows run) still carry the old
+    # names; remap so the script loads on this machine's zuko 1.6.0. Both
+    # directions are handled so the script also runs on a fresh checkout with
+    # an old zuko.
+    sd = dict(sd)
+    if "base._0" in sd and "base.lower" not in sd:
+        sd["base.lower"] = sd.pop("base._0")
+        sd["base.upper"] = sd.pop("base._1")
+    elif "base.lower" in sd and "base._0" not in sd:
+        sd["base._0"] = sd.pop("base.lower")
+        sd["base._1"] = sd.pop("base.upper")
+    flow.load_state_dict(sd)
     flow.eval()
 
     if "embedding_state_dict" not in ckpt:
@@ -104,11 +117,19 @@ def find_checkpoint(runs_dir, tier, explicit_path=None):
     if len(cond) == 1:
         return cond[0]
     if len(cond) > 1:
+        # Deterministic default: prefer the primary run shared by every tier
+        # (runs/<tier>/ep20-bs512/cond/best_flow.pt), so the script runs
+        # unattended. Override with --ckpt <tier>=<path> to use another run.
+        preferred = [c for c in cond if os.sep + "ep20-bs512" + os.sep in os.sep + os.path.normpath(c) + os.sep]
+        if len(preferred) == 1:
+            others = [c for c in cond if c not in preferred]
+            print(f"  note: multiple conditional checkpoints for {tier}; defaulting to "
+                  f"{preferred[0]}\n        (override with --ckpt {tier}=<path>; other option(s): "
+                  f"{', '.join(others)})")
+            return preferred[0]
         raise RuntimeError(
             f"Multiple conditional checkpoints found for {tier}, please disambiguate with "
             f"--ckpt {tier}=<one of these>:\n  " + "\n  ".join(cond))
-    if len(candidates) == 1:
-        return candidates[0]
     if len(candidates) == 1:
         return candidates[0]
     if len(candidates) == 0:

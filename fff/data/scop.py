@@ -4,8 +4,16 @@ from typing import Optional
 
 import pandas as pd
 import torch
-from geomstats.geometry.hypersphere import Hypersphere
-from geomstats.geometry.product_manifold import ProductManifold
+try:
+    from geomstats.geometry.hypersphere import Hypersphere
+    from geomstats.geometry.product_manifold import ProductManifold
+except ImportError:
+    # geomstats (or one of its deps) is unavailable -- e.g. geomstats 2.8
+    # breaks on numpy>=2 because it imports the removed numpy.trapz. The
+    # manifold is only stored on the dataset (see ManifoldDataset) and is
+    # never used in the data path, so a None sentinel is a safe fallback.
+    Hypersphere = None
+    ProductManifold = None
 from torch import Tensor
 from torch.utils.data import TensorDataset
 
@@ -103,7 +111,8 @@ def get_scop_dataset(
         train_ds = TensorDataset(train_data, train_cond)
         val_ds = TensorDataset(val_data, val_cond)
 
-    manifold = ProductManifold([Hypersphere(1), Hypersphere(1)])
+    manifold = (ProductManifold([Hypersphere(1), Hypersphere(1)])
+                if ProductManifold is not None else None)
     return (
         ManifoldDataset(train_ds, manifold),
         ManifoldDataset(val_ds, manifold),

@@ -47,6 +47,14 @@ import math
 import os
 import sys
 
+# Make the repository root importable so `from fff.data import load_dataset`
+# works when this file is run as `python scripts/scop_clustering_controls.py`.
+# Python puts only the script's own directory (scripts/) on sys.path, not the
+# repo root where the `fff` package lives.
+_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if _REPO_ROOT not in sys.path:
+    sys.path.insert(0, _REPO_ROOT)
+
 import numpy as np
 import pandas as pd
 import torch
