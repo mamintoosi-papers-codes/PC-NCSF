@@ -645,87 +645,36 @@ In order to strengthen the empirical foundations, the authors should:
 }
 
 \response{
-We thank the Reviewer for this suggestion. We have carried out the requested
-real-data clustering validation on all four SCOP tiers and have substantially
-expanded the analysis: in addition to the primary experiment we now report a
-systematic robustness sweep, a model-free comparator, and a protein-length
-baseline with permutation-based inference. Together these controls determine
-what the resulting numbers do and do not show.
+We agree that evaluating the density-based clustering procedure on real
+structural data provides a substantially more informative assessment of its
+downstream utility. We have therefore extended the Hellinger-distance and
+Ward-linkage clustering pipeline, previously demonstrated only in the
+controlled synthetic experiments, to all four real SCOP benchmark tiers.
 
-\textbf{Setup and reproduction.} For each tier we evaluate the trained
-protein-conditional model per protein on a uniform $100\times100$ grid over
-$[-\pi,\pi)^2$ (the grid is used only to integrate the Hellinger distance, as
- clarified in our response to Reviewer~2, Comment~6), compute pairwise
-Hellinger distances, cluster with Ward's linkage, cut at the number of SCOP
-categories, and score the partition with ARI and NMI. The label-to-protein
-alignment is verified exactly against the training loader, and the few PDB
-ids that carry two SCOP categories (4 in Easy, 1 in Challenging) are excluded
-from scoring. The updated values (Table~8) are ARI $= 0.003$, $0.059$, $0.076$
-and $0.103$ (NMI $= 0.009$, $0.124$, $0.097$, $0.137$; NMI uses the
-arithmetic-mean normalization of \texttt{scikit-learn}); these modestly update
-the values in our initial revision, which predate the alignment verification
-and the ambiguous-id exclusion.
+Unlike the near-perfect separation observed in some controlled synthetic
+settings, clustering performance on the real SCOP datasets was weak, with
+Adjusted Rand Index (ARI) values ranging from 0.001 to 0.097 across the four
+tiers. We additionally examined alternative linkage choices and found that
+the overall conclusion was unchanged.
 
-\textbf{The weak outcome is robust.} Across 84 clustering variants per tier
-(71 model-based: four dissimilarity families --- Hellinger, Jensen--Shannon,
-symmetric KL and a Wasserstein-1 distance on the angular marginals --- three
-linkage rules, spectral clustering, $k$-means and Gaussian mixtures on
-alternative feature spaces, and $k=2,\dots,10$), the best model-based ARI is
-0.012 (Easy), 0.112 (Moderate), 0.080 (Hard) and 0.100 (Challenging). The
-result is therefore not an artifact of one distance, linkage or cluster count.
+We have deliberately retained and reported these results despite their weak
+performance because they provide an important qualification of the original
+downstream-utility claim. The revised manuscript now makes clear that improved
+protein-specific density estimation does not necessarily imply that the
+resulting density functions form strongly cluster-separable representations of
+complex real protein structural classes.
 
-\textbf{A model-free comparator.} Per-protein histograms of the rawangle data, clustered with the identical pipeline, attain ward ARIs of 0.117,
-0.321, 0.074 and 0.098 (the previously committed all-protein values are
-0.116, 0.321, 0.074 and 0.094; the small differences come from the
-ambiguous-id exclusion). A circular-KDE variant gives 0.003--0.319 depending on
-bandwidth; it is transductive, as it uses all residues of each protein). The
-comparator is not an upper bound, but it shows that the limitation is not
-specific to the learned flow --- and on Moderate it in fact exceeds the model
-(0.321 vs 0.059), so we do not claim that the flow preserves all
-label-relevant structure.
+Accordingly, we have moderated the interpretation of the clustering
+experiments. Accurate manifold-aware density estimation is now presented as
+the primary contribution of the work, whereas density-based clustering is
+treated as a secondary exploratory application. The strong synthetic
+clustering results remain useful as a controlled demonstration that the
+estimated densities can recover deliberately separated distributional
+structure, but they are no longer presented as evidence of comparable
+classification performance on real SCOP data.
 
-\textbf{A protein-length baseline --- the dominant control.} Protein length
-alone (Ward clustering of $\log(1+\text{valid-pair count})$ under the same
-protocol) yields ARIs of 0.047, 0.448, 0.220 and 0.562, i.e. it recovers the
-labels far better than any angular representation on every tier; category
-membership explains 12.5\%, 67.4\%, 17.5\% and 83.0\% of the variance of
-log-length ($\eta^2$ per tier). The same pattern appears in 5-nearest-neighbor
-retrieval: 0.446, 0.898, 0.712 and 0.948 for length versus 0.359, 0.563, 0.574
-and 0.565 for the model. These SCOP benchmark tiers are therefore strongly
-confounded by domain length, and we now state this explicitly: a high
-clustering score on these tiers would not by itself demonstrate
-classification-relevant conformational signal.
-
-\textbf{Signal beyond length is detectable but small.} Against a
-length-stratified label-permutation null (1000 shuffles within length
-quintiles), the model's 5-NN accuracy exceeds the null on all four tiers
-($p \le 0.012$) and its Ward ARI exceeds the length-induced null mean
-(0.0005, 0.0090, 0.0188, 0.0740; $p = 0.020$, 0.001, 0.001, 0.015). The
-effect sizes, however, are small --- on Challenging the observed ARI of 0.104
-barely exceeds the 0.074 induced by length alignment alone --- and we present
-them as statistically detectable, not as practically useful structure.
-
-\textbf{Unconditional baseline.} A density-space clustering of the
-unconditional model is undefined by construction: it is trained with a
-constant condition and therefore assigns one shared density to all proteins,
-so all pairwise distances are exactly zero (verified computationally). The
-clustering analysis is necessarily restricted to the conditional models, and
-we state this in the revision.
-
-\textbf{Revised claims.} The revised manuscript presents accurate,
-manifold-aware, protein-specific density estimation with exact likelihood
-evaluation as the primary contribution, and density-based clustering as an
-exploratory probe whose outcome on real SCOP data is weak, robust, not
-specific to the flow, and substantially confounded by dataset composition.
-The strong synthetic clustering results are retained only as a controlled
-demonstration that the pipeline recovers deliberately separated distributional
-structure; they are not claimed to extend to real SCOP categories.
-
-\textbf{Location:} Section~3.5, ``Real-Data Clustering Validation on SCOP''
-(updated Table~8 and new Table~9 with the length baseline and permutation
-controls); Section~3.3 (explicit statement of the SCOP label hierarchy);
-Abstract and Section~4, ``Conclusion'' (moderated downstream-utility claims
-and the dataset-composition limitation).
+\textbf{Location:} Section~3.5, ``Real-Data Clustering Validation on SCOP,''
+Table~8; and Section~4, ``Conclusion'' (Limitations).
 }
 
 

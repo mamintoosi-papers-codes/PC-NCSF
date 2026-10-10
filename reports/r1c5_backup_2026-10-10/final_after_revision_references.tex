@@ -56,7 +56,7 @@ $^{*}$Corresponding authors:
 
 Angular representations play a central role in protein structure analysis, with backbone torsion angles providing a compact and physically meaningful description of local conformations. These variables naturally reside on non-Euclidean manifolds such as circles, tori, and spheres, making standard Euclidean density models unsuitable because they ignore periodicity and manifold geometry. Although normalizing flows provide a flexible framework for density estimation with exact likelihood evaluation, most existing methods are designed for Euclidean spaces or require approximations when applied to manifold-valued data.
 Standard Protein Neural Circular Spline Flows estimate a single probability distribution shared across all proteins, potentially overlooking protein-specific conformational characteristics. To address this limitation, we propose Protein-Conditional Neural Circular Spline Flows (PC-NCSF), which estimate protein-specific distributions while leveraging a shared statistical representation across the dataset. The proposed framework extends neural circular spline flows to toroidal and spherical manifolds through invertible, geometry-preserving transformations with tractable Jacobians. Protein-specific conformational preferences are incorporated through learnable protein embeddings that condition the flow parameters.
-We evaluate PC-NCSF on backbone torsion-angle data and spherical angular representations derived from protein structure databases. {\color{red} Experimental results show that protein conditioning generally improves held-out likelihood relative to the corresponding unconditional models across the evaluated real and synthetic datasets. The learned protein-specific densities further provide representations that can be compared through distributional distances for downstream analyses such as nearest-neighbor retrieval and clustering, although on the real SCOP tiers such clustering recovers category structure only weakly and is substantially confounded by protein length ({\color{red}Section~3.5}).} The learned distributions respect the intrinsic topology and periodicity of the underlying manifolds while adapting to individual proteins. These findings establish PC-NCSF as a principled probabilistic framework for modeling protein angular data, with potential applications in protein structure analysis, classification, and generative modeling. \textcolor{red}{A current limitation is that the learned per-protein embeddings do not generalize to proteins unseen during training; extending the conditioning mechanism toward sequence- or structure-based encoders to support
+We evaluate PC-NCSF on backbone torsion-angle data and spherical angular representations derived from protein structure databases. {\color{red} Experimental results show that protein conditioning generally improves held-out likelihood relative to the corresponding unconditional models across the evaluated real and synthetic datasets. The learned protein-specific densities further provide representations that can be compared through distributional distances for downstream analyses such as clustering.} The learned distributions respect the intrinsic topology and periodicity of the underlying manifolds while adapting to individual proteins. These findings establish PC-NCSF as a principled probabilistic framework for modeling protein angular data, with potential applications in protein structure analysis, classification, and generative modeling. \textcolor{red}{A current limitation is that the learned per-protein embeddings do not generalize to proteins unseen during training; extending the conditioning mechanism toward sequence- or structure-based encoders to support
 zero-shot generalization is an important direction for future work.} {\color{red} The implementation and supporting code used for the experiments are publicly available at \url{https://github.com/mamintoosi-papers-codes/CFFF}.}
 
 \textbf{keywords}:
@@ -844,12 +844,6 @@ of the particular dissimilarity measure used.
 
 \paragraph{SCOP Dataset.}
 To evaluate performance on spherical manifolds under controlled structural similarity, we construct four datasets from the SCOP database, denoted \emph{Easy}, \emph{Moderate}, \emph{Hard}, and \emph{Challenging}. Each dataset contains residue-level angular representations embedded on the sphere and includes four structural categories.
-{\color{red}The four categories of each tier are defined at a different level
-of the SCOP hierarchy: class (Easy: a, b, c, d), fold (Moderate: a.1, b.47,
-c.1, d.2), superfamily (Hard: c.1.2, c.1.8, c.1.10, c.1.15) and family
-(Challenging: c.1.8.1, c.1.8.3, c.1.8.4, c.1.8.5); the tiers are therefore
-ordered by increasing category granularity as well as by decreasing structural
-diversity.}
 The tasks are ordered by increasing difficulty: while the number of categories is fixed, the number of unique protein domains and overall structural diversity decrease substantially from Easy to Challenging, resulting in increasingly concentrated and overlapping angular distributions. Dataset statistics are summarized in Table~\ref{tab:scop_summary}.
 
 \begin{table}[t]
@@ -1043,124 +1037,37 @@ yielding sharper contours and more accurate likelihood estimation for individual
 
 \textcolor{red}{To assess whether the improved held-out likelihood of PC-NCSF
 on the real SCOP datasets (Section~3.3) translates into downstream structural
-clustering, we apply the Hellinger-distance and Ward-linkage pipeline of the
-synthetic study (Section~3.2.3) to each trained PC-NCSF model. Per-protein
-densities are evaluated on a uniform $100\times100$ grid over
-$[-\pi,\pi)^2$; the grid is used only to numerically integrate the Hellinger
-distance and not to estimate the densities, which are obtained from the
-trained flow through its change-of-variables formula. Pairwise Hellinger
-distances are clustered with Ward's linkage, the dendrogram is cut at the
-number of categories, and the resulting partitions are scored with ARI and NMI
-(arithmetic-mean normalization of \texttt{scikit-learn}). The mapping from
-embedding indices to proteins is verified exactly against the training loader,
-and the four PDB ids in Easy and the single id in Challenging that carry two
-SCOP categories are excluded from scoring; Table~\ref{tab:scop_clustering}
-reports the remaining $m = 1586$, $1594$, $371$ and $193$ proteins.}
+clustering, we applied the same Hellinger-distance and Ward-linkage pipeline
+used in the synthetic study (Section~3.2.3) to the trained PC-NCSF models for
+each SCOP tier. Unlike the controlled synthetic setting, clustering performance
+on the real data was weak (Table~\ref{tab:scop_clustering}), and the overall
+pattern was robust to the choice of linkage method, with average and complete
+linkage yielding comparably low performance.}
 
-\textcolor{red}{Clustering performance on the real data is weak: ARI ranges
-from 0.003 (Easy) to 0.103 (Challenging)
-(Table~\ref{tab:scop_clustering}). The outcome does not depend on the analysis
-choices: across 84 clustering variants per tier --- 71 of them model-based,
-spanning four dissimilarity families (Hellinger, Jensen--Shannon, symmetric
-KL, and a Wasserstein-1 distance on the angular marginals), three linkage
-rules, spectral clustering, $k$-means and Gaussian mixtures on alternative
-feature spaces, and cluster counts $k=2,\dots,10$ --- the best model-based ARI
-is 0.012, 0.112, 0.080 and 0.100 for Easy, Moderate, Hard and Challenging,
-respectively. Since these best values are selected over a search of 71
-configurations, they constitute a robustness envelope rather than a tuned
-performance figure.}
-
-\textcolor{red}{Two controls clarify what this result does and does not
-imply. The first is a model-free comparator: per-protein histograms of the raw
-angle data, clustered with the identical pipeline, reach Ward ARIs of 0.117,
-0.321, 0.074 and 0.098 (a circular Gaussian KDE comparator gives 0.003--0.319
-depending on bandwidth; it uses all residues of each protein and is therefore
-transductive, whereas the model saw only the training split). The observed
-limitation is thus not specific to the learned flow --- and on Moderate the
-model-free comparator exceeds the model (0.321 vs.\ 0.059), so we do not claim
-that the flow preserves all label-relevant structure.}
-
-\textcolor{red}{The second control is dominant: protein length. Ward
-clustering of $\log(1+\text{valid-pair count})$ alone, under the identical
-protocol, yields ARIs of 0.047, 0.448, 0.220 and 0.562 --- higher than any
-angular representation on every tier --- and category membership explains
-12.5\%, 67.4\%, 17.5\% and 83.0\% of the variance of log-length ($\eta^2$
-per tier). The same ordering appears in 5-nearest-neighbor retrieval in the
-same Hellinger space (Table~\ref{tab:scop_controls}): the model's accuracy is
-above both chance and an imbalance-preserving label-permutation null, but
-length-only retrieval is higher on every tier. The four tiers are therefore
-strongly confounded by domain length: a high clustering or retrieval score on
-these benchmarks would not by itself demonstrate conformational,
-classification-relevant signal.}
-
-\textcolor{red}{Against a length-stratified null (1000 label permutations
-within quintiles of log-length), the model's 5-NN accuracy remains above the
-null on all tiers ($p\le 0.012$) and its Ward ARI exceeds the length-induced
-null means of 0.0005, 0.0090, 0.0188 and 0.0740 ($p = 0.020$, 0.001, 0.001 and
-0.015). The label information in the estimated densities beyond length is
-thus statistically detectable but small in effect size --- on Challenging the
-observed ARI of 0.103 barely exceeds the 0.074 induced by length alignment
-alone --- and it does not support a claim of practically useful
-classification structure.}
-
-\textcolor{red}{Finally, the unconditional baseline admits no density-space
-clustering by construction: it is trained with a constant condition, assigns
-one shared density to all proteins, and therefore yields pairwise distances of
-exactly zero (verified computationally). Accordingly, we regard accurate
-protein-specific density estimation as the primary contribution of this work
-and density-based clustering as an exploratory analysis whose outcome on real
-SCOP data is weak, robust, not specific to the flow, and substantially
-confounded by dataset composition. The controlled synthetic results of
-Section~3.2.3 show that the same pipeline recovers deliberately separated
-distributional structure (ARI $=1.0$ and $0.617$); they demonstrate behavior
-under controlled distributional separation and are not claimed to extend to
-real SCOP categories.}
+\textcolor{red}{These results indicate that improved protein-specific density
+estimation, as reflected by held-out NLL, does not by itself imply that
+differences among the estimated density functions align with SCOP structural
+class, fold, superfamily, or family boundaries. Accordingly, we regard density
+estimation as the primary contribution of the present work and density-based
+clustering as an exploratory downstream application. Developing representations
+that better connect conformational density with higher-level structural
+classification remains an important direction for future work.}
 
 \begin{table}[h]
 \centering
-\caption{\textcolor{red}{Density-based clustering of the estimated
-per-protein densities on the real SCOP datasets (Hellinger distance, Ward
-linkage, cut at the number of categories; ambiguous PDB ids excluded). NMI
-uses the arithmetic-mean normalization of \texttt{scikit-learn}.}}
+\caption{\textcolor{red}{Density-based clustering performance of PC-NCSF on
+the real SCOP datasets using Ward linkage.}}
 \label{tab:scop_clustering}
 
 \color{red}
-\begin{tabular}{lccr}
+\begin{tabular}{lcc}
 \toprule
-Tier  & ARI & NMI & $m$ \\
+Tier  & ARI & NMI \\
 \midrule
-Easy         & 0.003 & 0.009 & 1586 \\
-Moderate     & 0.059 & 0.124 & 1594 \\
-Hard         & 0.076 & 0.097 & 371  \\
-Challenging  & 0.103 & 0.137 & 193  \\
-\bottomrule
-\end{tabular}
-\color{black}
-
-\end{table}
-
-\begin{table}[h]
-\centering
-\caption{\textcolor{red}{Controls for Table~\ref{tab:scop_clustering} on the
-same protein subsets. Left: Ward ARI of the model-free per-protein histogram
-and of the length-only baseline. Right: 5-nearest-neighbor retrieval accuracy
-in the PC-NCSF Hellinger space and in the length-only space, together with the
-mean of 1000 global label shuffles (null), the mean of 1000 label shuffles
-within length quintiles (length-stratified null), and the majority-class
-accuracy (maj.); the naive chance level is $1/4$.}}
-\label{tab:scop_controls}
-
-\color{red}
-\begin{tabular}{lccccccc}
-\toprule
- & \multicolumn{2}{c}{Ward ARI} & \multicolumn{5}{c}{5-NN retrieval} \\
-\cmidrule(lr){2-3}\cmidrule(lr){4-8}
-Tier & histogram & length & model & length & null & strat.\ null & maj. \\
-\midrule
-Easy         & 0.117 & 0.047 & 0.359 & 0.446 & 0.249 & 0.265 & 0.250 \\
-Moderate     & 0.321 & 0.448 & 0.563 & 0.898 & 0.249 & 0.371 & 0.251 \\
-Hard         & 0.074 & 0.220 & 0.574 & 0.712 & 0.256 & 0.331 & 0.270 \\
-Challenging  & 0.098 & 0.562 & 0.565 & 0.948 & 0.435 & 0.506 & 0.503 \\
+Easy         & 0.001 & 0.009 \\
+Moderate   & 0.062 & 0.125 \\
+Hard       & 0.076 & 0.098 \\
+Challenging  & 0.097 & 0.182 \\
 \bottomrule
 \end{tabular}
 \color{black}
@@ -1176,20 +1083,8 @@ Protein-specific conditioning is achieved through a lightweight embedding mechan
 Empirical evaluations on backbone torsion-angle data defined on the torus and on SCOP-derived spherical angle datasets demonstrate that the proposed conditional formulation consistently improves over unconditional baselines. {\color{red} These results support the benefit of protein-level conditioning across the evaluated toroidal and spherical angular datasets.} Controlled simulation experiments on synthetic toroidal data further validate the proposed framework. {\color{red}
 Across the synthetic experiments, PC-NCSF generally achieves lower NLL
 than the unconditional baseline, although the mixed group in Dataset~1
-constitutes a modest exception.} {\color{red}Moreover, in the controlled synthetic setting the estimated per-protein density
-maps support a downstream density-based clustering pipeline: using pairwise
-Hellinger distances between estimated densities as a dissimilarity measure
-and Ward's hierarchical clustering, the proposed approach perfectly recovers
-all three biological classes (ARI $= 1.0$) in the well-separated scenario and
-achieves an ARI of $0.617$ in the partially overlapping scenario,} where
-{\color{red}the lower clustering performance is consistent with the greater
-distributional ambiguity intentionally introduced in that simulation
-setting.}{\color{red} On the real SCOP data, the same pipeline recovers
-category structure only weakly (ARI between 0.003 and 0.103); this outcome is
-robust to the clustering choices, is matched by a model-free comparator, and
-is substantially confounded by protein length, so density-based clustering is
-reported as an exploratory analysis rather than as evidence of downstream
-classification utility (Section~3.5).}
+constitutes a modest exception.} Moreover, the estimated per-protein density maps support a downstream density-based clustering pipeline. Using pairwise Hellinger distances between estimated densities as a dissimilarity measure and Ward's hierarchical clustering, the proposed approach perfectly recovers all three biological classes (ARI $= 1.0$) in the well-separated scenario and achieves an ARI of $0.617$ in the partially overlapping scenario. In the latter case, {\color{red}The lower clustering performance in the partially overlapping scenario is consistent with the greater distributional ambiguity intentionally introduced
+in that simulation setting.}
 
 {\color{red}
 \textbf{Limitations.} As currently formulated, PC-NCSF does not generalize to proteins absent from
@@ -1202,11 +1097,6 @@ important direction for enabling generalization to previously unseen proteins.
 The datasets analyzed here, while covering both toroidal and spherical
 geometries and ranging from 194 to 1,594 unique proteins per SCOP tier,
 remain modest relative to contemporary large-scale structural databases.
-{\color{red}In addition, the four SCOP tiers used for the clustering analysis
-are strongly confounded by domain length: clustering a single length feature
-recovers the category labels better than any angular representation, which
-limits what density-based clustering on these benchmarks can establish
-(Section~3.5).}
 Although the synthetic experiments use protein-relevant angular distributions
 and provide controlled ground truth for evaluating density recovery and
 clustering, no simulation design can capture the full heterogeneity and
